@@ -1,6 +1,6 @@
-# Repository Name
+# Hugging Triple Aces Team
 
-Repository description goes here.
+This is the repository for the Hugging Triple Aces team, created for Computer Vision course at KSE. The repository is structured into several folders, each completing a specific assignment.
 
 ## Prerequisites for Local Setup
 
@@ -23,8 +23,8 @@ See the [Astral uv docs](https://docs.astral.sh/uv/) for more installation optio
 1. Clone the repository:
 
    ```bash
-   git clone <repository-url>
-   cd <repository-directory>
+   git clone https://github.com/sl4shuur/HuggingTripleAces
+   cd HuggingTripleAces
    ```
 
 2. Sync the dependencies:
@@ -54,36 +54,3 @@ See the [Astral uv docs](https://docs.astral.sh/uv/) for more installation optio
    ```
 
 4. To run a Jupyter notebook, ensure you have selected the correct Python kernel in your Jupyter environment. You can do this by opening the notebook and selecting the kernel that corresponds to your virtual environment.
-
-## Pulling updates to existing project
-
-1. Add this repository as a remote if you haven't already:
-
-   ```bash
-   git remote add template https://github.com/sl4shuur/python-template
-   ```
-
-2. Fetch the latest changes from the template repository:
-
-   ```bash
-   git fetch template main
-   ```
-
-3. Merge the changes into your local main branch:
-
-   ```bash
-   git merge template/main --allow-unrelated-histories
-   ```
-
-4. Resolve any merge conflicts if they arise, then commit the changes.
-5. Push the updated main branch to your remote repository:
-
-   ```bash
-   git push origin main
-   ```
-
-6. Remove the template remote if you no longer need it:
-
-   ```bash
-   git remote remove template
-   ```
