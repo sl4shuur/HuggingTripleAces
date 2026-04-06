@@ -14,6 +14,7 @@ dependencies = [
     "pandas>=3.0.0",
     "pillow>=12.1.1",
     "python-dotenv>=1.2.1",
+    "pytorch-lightning>=2.6.1",
     "segmentation-models-pytorch>=0.5.0",
 ]
 
