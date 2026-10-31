@@ -11,7 +11,8 @@ from soilcv.config import ExperimentConfig
 
 
 def build_bundle(destination):
-    root = Path(__file__).parent / "soilcv"
+    project = Path(__file__).resolve().parent
+    root = project / "soilcv"
     destination = Path(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
     identity = package_identity()
@@ -19,8 +20,10 @@ def build_bundle(destination):
                "default_wandb_project": ExperimentConfig("release").wandb_project}
     with ZipFile(destination, "w", compression=ZIP_DEFLATED) as archive:
         for path in sorted(root.rglob("*")):
-            if path.is_file() and path.suffix in {".py", ".md", ".csv"}:
+            if path.is_file() and path.suffix in {".py", ".md", ".csv", ".toml", ".lock"}:
                 archive.write(path, "soilcv/" + str(path.relative_to(root)))
+        archive.write(project / "pyproject.toml", "pyproject.toml")
+        archive.write(project / "HYPOTHESES.md", "HYPOTHESES.md")
         archive.writestr("release.json", json.dumps(release, indent=2) + "\n")
     return destination
 
