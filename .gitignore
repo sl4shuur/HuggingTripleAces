@@ -208,3 +208,5 @@ __marimo__/
 
 data/
 *.csv
+ass3/VOC2012_train_val/
+ass3/VOC2012_test/
