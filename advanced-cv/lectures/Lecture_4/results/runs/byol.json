@@ -1,0 +1,43 @@
+{
+ "name": "byol",
+ "method": "byol",
+ "backbone": "resnet18",
+ "backbone_params_m": 11.17,
+ "train_images": 100000,
+ "epochs": 100,
+ "batch_size": 512,
+ "minutes": 41.4,
+ "diverged": false,
+ "final_loss": 0.11849051790359692,
+ "linear_acc": 0.8455000519752502,
+ "knn_acc": 0.8098750114440918,
+ "knn_acc_z": 0.7946250438690186,
+ "rankme_h": 286.26602699512387,
+ "rankme_z": 26.711682025484425,
+ "std_h": 0.7329270839691162,
+ "std_z": 0.9537234306335449,
+ "alignment": 0.1075282096862793,
+ "uniformity": -3.1301090717315674,
+ "config": {
+  "name": "byol",
+  "method": "byol",
+  "method_kwargs": {
+   "ema": 0.99
+  },
+  "backbone": "resnet18",
+  "aug": {},
+  "train_split": "unlabeled",
+  "subset": null,
+  "epochs": 100,
+  "batch_size": 512,
+  "optimizer": "sgd",
+  "base_lr": 0.24,
+  "weight_decay": 0.0005,
+  "warmup_epochs": 10,
+  "freeze_patch_embed": false,
+  "eval_every": 5,
+  "log_every": 20,
+  "artifacts": true,
+  "seed": 95431
+ }
+}

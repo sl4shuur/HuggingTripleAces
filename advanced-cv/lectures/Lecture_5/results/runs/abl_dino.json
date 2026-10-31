@@ -1,0 +1,36 @@
+{
+ "name": "abl_dino",
+ "method": "dino",
+ "encoder_params_m": 5.38,
+ "train_images": 100000,
+ "epochs": 30,
+ "batch_size": 512,
+ "minutes": 21.2,
+ "diverged": false,
+ "final_loss": 3.7069621526277983,
+ "linear_acc": 0.7033750414848328,
+ "knn_acc": 0.6423750519752502,
+ "knn_acc_student": 0.6550000309944153,
+ "rankme_h": 68.4537999288947,
+ "std_h": 0.6919784545898438,
+ "config": {
+  "name": "abl_dino",
+  "method": "dino",
+  "method_kwargs": {
+   "ema": 0.99,
+   "teacher_temp": 0.04
+  },
+  "views": {},
+  "train_split": "unlabeled",
+  "epochs": 30,
+  "batch_size": 512,
+  "base_lr": 0.0005,
+  "weight_decay": 0.05,
+  "warmup_epochs": 10,
+  "grad_clip": 3.0,
+  "eval_every": 1,
+  "log_every": 20,
+  "artifacts": false,
+  "seed": 95431
+ }
+}

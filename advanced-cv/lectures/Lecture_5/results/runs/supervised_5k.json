@@ -1,0 +1,33 @@
+{
+ "name": "supervised_5k",
+ "method": "supervised",
+ "encoder_params_m": 5.38,
+ "train_images": 5000,
+ "epochs": 300,
+ "batch_size": 512,
+ "minutes": 2.4,
+ "diverged": false,
+ "final_loss": 0.8230251868565878,
+ "linear_acc": 0.6827500462532043,
+ "knn_acc": 0.6780000329017639,
+ "knn_acc_student": 0.6780000329017639,
+ "rankme_h": 111.61025503689646,
+ "std_h": 0.9533675312995911,
+ "config": {
+  "name": "supervised_5k",
+  "method": "supervised",
+  "method_kwargs": {},
+  "views": {},
+  "train_split": "train",
+  "epochs": 300,
+  "batch_size": 512,
+  "base_lr": 0.0005,
+  "weight_decay": 0.05,
+  "warmup_epochs": 30,
+  "grad_clip": 3.0,
+  "eval_every": 20,
+  "log_every": 20,
+  "artifacts": true,
+  "seed": 95431
+ }
+}

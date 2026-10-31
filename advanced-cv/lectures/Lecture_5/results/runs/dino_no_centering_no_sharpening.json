@@ -1,0 +1,37 @@
+{
+ "name": "dino_no_centering_no_sharpening",
+ "method": "dino",
+ "encoder_params_m": 5.38,
+ "train_images": 100000,
+ "epochs": 30,
+ "batch_size": 512,
+ "minutes": 20.6,
+ "diverged": false,
+ "final_loss": 8.138906478881836,
+ "linear_acc": 0.39100003242492676,
+ "knn_acc": 0.28075000643730164,
+ "knn_acc_student": 0.28312501311302185,
+ "rankme_h": 2.4420246130525602,
+ "std_h": 0.04730399325489998,
+ "config": {
+  "name": "dino_no_centering_no_sharpening",
+  "method": "dino",
+  "method_kwargs": {
+   "ema": 0.99,
+   "teacher_temp": 0.1,
+   "centering": false
+  },
+  "views": {},
+  "train_split": "unlabeled",
+  "epochs": 30,
+  "batch_size": 512,
+  "base_lr": 0.0005,
+  "weight_decay": 0.05,
+  "warmup_epochs": 10,
+  "grad_clip": 3.0,
+  "eval_every": 1,
+  "log_every": 20,
+  "artifacts": false,
+  "seed": 95431
+ }
+}

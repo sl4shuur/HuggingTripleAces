@@ -1,0 +1,43 @@
+{
+ "name": "col_vicreg_no_var",
+ "method": "vicreg",
+ "backbone": "resnet18",
+ "backbone_params_m": 11.17,
+ "train_images": 100000,
+ "epochs": 30,
+ "batch_size": 512,
+ "minutes": 11.0,
+ "diverged": false,
+ "final_loss": 1.560626794728109e-14,
+ "linear_acc": 0.3451250195503235,
+ "knn_acc": 0.2758750021457672,
+ "knn_acc_z": 0.09212500602006912,
+ "rankme_h": 16.499665257640082,
+ "rankme_z": 1.0053115039645337,
+ "std_h": 0.2060685008764267,
+ "std_z": 6.759082316420972e-05,
+ "alignment": 1.0130658978368956e-08,
+ "uniformity": 0.0,
+ "config": {
+  "name": "col_vicreg_no_var",
+  "method": "vicreg",
+  "method_kwargs": {
+   "var_coeff": 0.0
+  },
+  "backbone": "resnet18",
+  "aug": {},
+  "train_split": "unlabeled",
+  "subset": null,
+  "epochs": 30,
+  "batch_size": 512,
+  "optimizer": "sgd",
+  "base_lr": 0.12,
+  "weight_decay": 0.0005,
+  "warmup_epochs": 10,
+  "freeze_patch_embed": false,
+  "eval_every": 1,
+  "log_every": 20,
+  "artifacts": false,
+  "seed": 95431
+ }
+}

@@ -1,0 +1,43 @@
+{
+ "name": "data_simclr_10k",
+ "method": "simclr",
+ "backbone": "resnet18",
+ "backbone_params_m": 11.17,
+ "train_images": 10000,
+ "epochs": 300,
+ "batch_size": 512,
+ "minutes": 9.2,
+ "diverged": false,
+ "final_loss": 2.5102043904756246,
+ "linear_acc": 0.7585000395774841,
+ "knn_acc": 0.7455000281333923,
+ "knn_acc_z": 0.6993750333786011,
+ "rankme_h": 390.0876154170881,
+ "rankme_z": 82.32717117557917,
+ "std_h": 0.84080970287323,
+ "std_z": 0.995615541934967,
+ "alignment": 0.3059847056865692,
+ "uniformity": -3.718964099884033,
+ "config": {
+  "name": "data_simclr_10k",
+  "method": "simclr",
+  "method_kwargs": {
+   "temperature": 0.2
+  },
+  "backbone": "resnet18",
+  "aug": {},
+  "train_split": "unlabeled",
+  "subset": 10000,
+  "epochs": 300,
+  "batch_size": 512,
+  "optimizer": "sgd",
+  "base_lr": 0.24,
+  "weight_decay": 0.0005,
+  "warmup_epochs": 100,
+  "freeze_patch_embed": false,
+  "eval_every": 10,
+  "log_every": 20,
+  "artifacts": false,
+  "seed": 95431
+ }
+}

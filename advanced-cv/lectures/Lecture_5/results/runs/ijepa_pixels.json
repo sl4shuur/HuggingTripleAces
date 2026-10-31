@@ -1,0 +1,44 @@
+{
+ "name": "ijepa_pixels",
+ "method": "ijepa",
+ "encoder_params_m": 5.38,
+ "train_images": 100000,
+ "epochs": 30,
+ "batch_size": 512,
+ "minutes": 4.7,
+ "diverged": false,
+ "final_loss": 0.28723051991218174,
+ "linear_acc": 0.6103750467300415,
+ "knn_acc": 0.46250003576278687,
+ "knn_acc_student": 0.49012503027915955,
+ "rankme_h": 20.356471280916416,
+ "std_h": 0.2563309669494629,
+ "config": {
+  "name": "ijepa_pixels",
+  "method": "ijepa",
+  "method_kwargs": {
+   "ema": 0.99,
+   "target": "pixels"
+  },
+  "views": {
+   "crop_scale": [
+    0.3,
+    1.0
+   ],
+   "jitter_p": 0.0,
+   "gray_p": 0.0,
+   "blur_p": 0.0
+  },
+  "train_split": "unlabeled",
+  "epochs": 30,
+  "batch_size": 512,
+  "base_lr": 0.0005,
+  "weight_decay": 0.05,
+  "warmup_epochs": 10,
+  "grad_clip": 3.0,
+  "eval_every": 1,
+  "log_every": 20,
+  "artifacts": false,
+  "seed": 95431
+ }
+}

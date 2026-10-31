@@ -1,0 +1,43 @@
+{
+ "name": "barlow_twins",
+ "method": "barlow_twins",
+ "backbone": "resnet18",
+ "backbone_params_m": 11.17,
+ "train_images": 100000,
+ "epochs": 100,
+ "batch_size": 512,
+ "minutes": 31.8,
+ "diverged": false,
+ "final_loss": 75.13880826509916,
+ "linear_acc": 0.8412500619888306,
+ "knn_acc": 0.8107500672340393,
+ "knn_acc_z": 0.7671250104904175,
+ "rankme_h": 343.7183109550788,
+ "rankme_z": 622.9522547640803,
+ "std_h": 0.7952474355697632,
+ "std_z": 0.9983691573143005,
+ "alignment": 0.1981445699930191,
+ "uniformity": -3.8814339637756348,
+ "config": {
+  "name": "barlow_twins",
+  "method": "barlow_twins",
+  "method_kwargs": {
+   "lambd": 0.005
+  },
+  "backbone": "resnet18",
+  "aug": {},
+  "train_split": "unlabeled",
+  "subset": null,
+  "epochs": 100,
+  "batch_size": 512,
+  "optimizer": "sgd",
+  "base_lr": 0.02,
+  "weight_decay": 0.0005,
+  "warmup_epochs": 10,
+  "freeze_patch_embed": false,
+  "eval_every": 5,
+  "log_every": 20,
+  "artifacts": true,
+  "seed": 95431
+ }
+}
