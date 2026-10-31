@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from zipfile import ZipFile, ZIP_DEFLATED
 
+from soilcv import __version__
 from soilcv.artifacts import package_identity
 from soilcv.config import ExperimentConfig
 
@@ -26,5 +27,9 @@ def build_bundle(destination):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("destination", type=Path, help="Output ZIP path")
+    parser.add_argument(
+        "destination", nargs="?", type=Path,
+        default=Path(__file__).resolve().parent / f"soil-cv-utils.zip",
+        help="Output ZIP path (default: next to this script)",
+    )
     print(build_bundle(parser.parse_args().destination))
