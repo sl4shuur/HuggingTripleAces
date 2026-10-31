@@ -1,4 +1,4 @@
- Hugging Triple Aces Team
+# Hugging Triple Aces Team
 
 This is the repository for the Hugging Triple Aces team, created for Computer Vision course at KSE. The repository is structured into several folders, each completing a specific assignment.
 
