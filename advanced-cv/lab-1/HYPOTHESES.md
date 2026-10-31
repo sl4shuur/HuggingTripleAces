@@ -30,4 +30,24 @@ Use CV to choose the final CNN recipe. Public and private leaderboard scores rem
 
 ## Results
 
-Pending. Keep the hypotheses above unchanged. Add observed outcomes and explanations below after the runs.
+The block is complete. The predictions above are kept unchanged. The pre-run commit is `804c059`.
+
+Best fixed-fold OOF EMD: **32.445**, fold standard deviation **14.044**, with `cnn-r18-constant-lr`. The fold median baseline is **85.213**. All 32 planned fold jobs and the separate smoke test completed. Each worker used one Tesla T4.
+
+- Frozen ResNet EMD is 36.315; tuned ResNet EMD is 34.006. Tuning helps here, but the gain is small.
+- AdamW recipe: 34.006; SGD recipe: 35.240. The score gap does not isolate optimizer choice or prove learning speed.
+- Frozen BN stats: 34.006; updated BN stats: 39.271. This fits the concern about running statistics from related tile batches.
+- Light augmentation: 34.006; no augmentation: 35.745. Light augmentation helps in this recipe.
+- Warmup/cosine: 34.006; constant LR: 32.445. The schedule prediction was wrong. A full LR from the start works better in this short run; many best checkpoints are early.
+- 288 px: 34.006; 224 px: 34.087. Compare this gap with fold variation before claiming that more pixels help.
+- ConvNeXt-Tiny: 34.628; matched ResNet recipe: 34.006. The expected architecture gain did not hold. More capacity and different pretrained features do not ensure a gain on 18 train samples per fold.
+
+H-CNN-00 passed: finite GPU training, valid curves, complete sample IDs, and online W&B tracking. H-CNN-03 gives the predicted score order, but this alone does not confirm faster learning. H-CNN-07 has only a 0.080 EMD gap; this is too small for a strong resolution claim.
+
+These are one-seed observations on 24 samples. The fold standard deviation is not a confidence interval. Model and epoch selection can overfit these folds. The test ensemble averages four fold models; OOF scores evaluate one held-out model per sample.
+
+The next Run All saves these files in Kaggle Outputs: `part1_cnn/results/cnn_report.md`, `part1_cnn/results/cnn_results.csv`, and `part1_cnn/results/cnn_checkpoints.csv`. Public LB: not submitted. Private LB: not available.
+
+## Kaggle delivery
+
+The CNN recipes now live in the code dataset under `soilcv/cnn/`. The notebook can run in a fresh Kaggle session with Run All. This changes the launch and file layout, not the recipes above. The output folder contains the full study and its environment. Each fold is tracked online; no extra CV-summary run is created. The earlier study was archived before changing this layout.
