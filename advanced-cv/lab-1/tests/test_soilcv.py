@@ -302,7 +302,7 @@ def test_layer_groups_require_explicit_mapping_and_have_no_duplicates():
     with pytest.raises(ValueError):make_param_groups(model,lr=.1,layer_decay=.5)
 
 
-def test_upload_bundle_contains_code_and_original_folds_only(tmp_path):
+def test_upload_bundle_contains_cnn_code_environment_and_original_folds(tmp_path):
     from zipfile import ZipFile
     from package_soilcv import build_bundle
     path=build_bundle(tmp_path/'soilcv.zip')
@@ -312,5 +312,10 @@ def test_upload_bundle_contains_code_and_original_folds_only(tmp_path):
         assert release['default_wandb_entity']=='public-team'
         assert 'soilcv/assets/sample_folds.csv' in names
         assert 'soilcv/tracking.py' in names and 'soilcv/training.py' in names
+        for name in ['experiments.py','launcher.py','analysis.py','inference.py','outputs.py']:
+            assert 'soilcv/cnn/' + name in names
+        assert 'soilcv/cnn/assets/uv.lock' in names
+        assert 'soilcv/cnn/assets/pyproject.toml' in names
+        assert 'pyproject.toml' in names and 'HYPOTHESES.md' in names
         assert not any('__pycache__' in name or name.endswith('.ipynb') for name in names)
         assert archive.read('soilcv/assets/sample_folds.csv')==DEFAULT_FOLDS_PATH.read_bytes()
