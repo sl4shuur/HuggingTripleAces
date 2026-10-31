@@ -1,6 +1,6 @@
 # Shared soil CV package
 
-Status: version 0.1.0 is implemented in `soilcv/`. See `soilcv/README.md` for the working API and examples. The later diagnostics, ensembles, and method-specific SSL helpers remain future work.
+Status: version 0.1.1 is implemented in `soilcv/`. See `soilcv/README.md` for the working API and examples. The later diagnostics, ensembles, and method-specific SSL helpers remain future work.
 
 Goal: use the same data, folds, scoring, and run files for CNN, ViT, frozen features, SSL, and ensembles. Train on Kaggle. Keep the source code in this repo.
 

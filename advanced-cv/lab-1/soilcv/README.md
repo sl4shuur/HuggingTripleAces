@@ -1,6 +1,6 @@
 # soilcv
 
-Shared code for soil grain-size experiments. Version 0.1.0.
+Shared code for soil grain-size experiments. Version 0.1.1.
 
 Use the same data, folds, curve units, and scores for CNN, ViT, frozen features, and SSL fine-tuning. SSL pretraining keeps its own loop.
 
