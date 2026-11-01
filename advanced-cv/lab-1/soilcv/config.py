@@ -1,8 +1,8 @@
 """Small experiment configs and repeatable seeds."""
 
-from dataclasses import asdict, dataclass, field
 import json
 import random
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -23,7 +23,11 @@ class ExperimentConfig:
     params: dict = field(default_factory=dict)
 
     def __post_init__(self):
-        if not self.experiment_id or Path(self.experiment_id).name != self.experiment_id or self.experiment_id in {".", ".."}:
+        if (
+            not self.experiment_id
+            or Path(self.experiment_id).name != self.experiment_id
+            or self.experiment_id in {".", ".."}
+        ):
             raise ValueError("experiment_id must be a simple folder name.")
         if self.fold is not None and (not isinstance(self.fold, int) or self.fold < 0):
             raise ValueError("fold must be a non-negative integer or None.")
@@ -44,7 +48,12 @@ class ExperimentConfig:
 def _check_config(data):
     if isinstance(data, dict):
         for key, value in data.items():
-            if str(key).lower() in {"api_key", "wandb_api_key", "password", "access_token"}:
+            if str(key).lower() in {
+                "api_key",
+                "wandb_api_key",
+                "password",
+                "access_token",
+            }:
                 raise ValueError("Keep secrets outside the experiment config.")
             _check_config(value)
     elif isinstance(data, (list, tuple)):
@@ -82,6 +91,7 @@ def seed_everything(seed=42, *, deterministic=False):
 
 def seed_worker(worker_id):
     import torch
+
     seed = torch.initial_seed() % 2**32
     random.seed(seed)
     np.random.seed(seed)

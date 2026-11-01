@@ -3,7 +3,19 @@
 import numpy as np
 import pandas as pd
 
-TARGET_COLUMNS = ("0.002", "0.0063", "0.02", "0.063", "0.2", "0.63", "2", "6.3", "20", "63", "200")
+TARGET_COLUMNS = (
+    "0.002",
+    "0.0063",
+    "0.02",
+    "0.063",
+    "0.2",
+    "0.63",
+    "2",
+    "6.3",
+    "20",
+    "63",
+    "200",
+)
 SIEVE_MM = np.array(TARGET_COLUMNS, dtype=float)
 SIEVE_MM.setflags(write=False)
 LOG_WIDTHS = np.diff(np.log10(SIEVE_MM))
@@ -12,7 +24,11 @@ LOG_WIDTHS.setflags(write=False)
 
 def curve_array(values):
     array = np.asarray(values, dtype=float)
-    if array.ndim not in (1, 2) or array.shape[-1] != len(TARGET_COLUMNS) or array.size == 0:
+    if (
+        array.ndim not in (1, 2)
+        or array.shape[-1] != len(TARGET_COLUMNS)
+        or array.size == 0
+    ):
         raise ValueError("Expected one curve or a non-empty [samples, 11] array.")
     if not np.isfinite(array).all():
         raise ValueError("Curve values must be finite.")
@@ -58,13 +74,18 @@ def align_samples(reference, predictions):
 def _aggregate(frame, columns):
     check_ids(frame, unique=False)
     required = ["sample_id", "photo", "tile_id", *columns]
-    if any(column not in frame for column in required) or frame[required].isna().any().any():
+    if (
+        any(column not in frame for column in required)
+        or frame[required].isna().any().any()
+    ):
         raise ValueError("Tiles need sample_id, photo, tile_id, and all value columns.")
     if frame.duplicated(["sample_id", "photo", "tile_id"]).any():
         raise ValueError("Repeated tile IDs would change aggregation weights.")
     if not np.isfinite(frame[list(columns)].to_numpy(float)).all():
         raise ValueError("Values must be finite.")
-    photo_values = frame.groupby(["sample_id", "photo"], sort=False)[list(columns)].mean()
+    photo_values = frame.groupby(["sample_id", "photo"], sort=False)[
+        list(columns)
+    ].mean()
     return photo_values.groupby("sample_id", sort=False).mean().reset_index()
 
 
@@ -89,6 +110,7 @@ def make_submission(predictions, template, path=None):
     validate_curves(result[list(TARGET_COLUMNS)], atol=0)
     if path is not None:
         from pathlib import Path
+
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         result.to_csv(path, index=False)

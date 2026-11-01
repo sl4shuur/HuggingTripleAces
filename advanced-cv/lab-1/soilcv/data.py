@@ -1,24 +1,33 @@
 """Read this competition's metadata and use saved sample folds."""
 
-from pathlib import Path
 import re
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from PIL import Image
+
 from .curves import TARGET_COLUMNS, check_ids, validate_curves
 
 DEFAULT_FOLDS_PATH = Path(__file__).with_name("assets") / "sample_folds.csv"
 
 
 def _name_key(text):
-    text = str(text).lower().replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
+    text = (
+        str(text)
+        .lower()
+        .replace("ä", "ae")
+        .replace("ö", "oe")
+        .replace("ü", "ue")
+        .replace("ß", "ss")
+    )
     return re.sub(r"[^a-z0-9]", "", text)
 
 
 def load_metadata(data_dir):
     """Return (labels, photos, submission_template) from the competition input."""
     from .tiles import estimate_ppm
+
     root = Path(data_dir)
     labels = pd.read_csv(root / "Training_labels_updated.csv")
     template = pd.read_csv(root / "sample_submission.csv")
@@ -27,9 +36,13 @@ def load_metadata(data_dir):
         frame["sample_id"] = frame.sample_id.str.strip()
         check_ids(frame)
     validate_curves(labels[list(TARGET_COLUMNS)])
-    labels["soil_group"] = np.where(labels["0.063"] >= 50, "fine", np.where(labels["2"] >= 50, "sand", "gravel"))
+    labels["soil_group"] = np.where(
+        labels["0.063"] >= 50, "fine", np.where(labels["2"] >= 50, "sand", "gravel")
+    )
     phone_names = {_name_key(row.phone): row for row in cameras.itertuples(index=False)}
-    camera_names = {_name_key(row.camera): row for row in cameras.itertuples(index=False)}
+    camera_names = {
+        _name_key(row.camera): row for row in cameras.itertuples(index=False)
+    }
     test_ids = {_name_key(sample): sample for sample in template.sample_id}
     rows = []
     for path in sorted(root.rglob("*")):
@@ -52,10 +65,20 @@ def load_metadata(data_dir):
         if camera is None or sample_id is None:
             raise ValueError(f"Cannot match sample/camera for {path.name}.")
         ppm = estimate_ppm(camera.ppm, (width, height), (camera.width, camera.height))
-        rows.append({"sample_id": sample_id, "photo": path.name, "path": str(path),
-                     "split": "train" if is_train else "test", "device": camera.phone,
-                     "width": width, "height": height, "ppm_est": ppm,
-                     "ppm_method": "resize_assumed_no_crop", "absolute_scale_verified": False})
+        rows.append(
+            {
+                "sample_id": sample_id,
+                "photo": path.name,
+                "path": str(path),
+                "split": "train" if is_train else "test",
+                "device": camera.phone,
+                "width": width,
+                "height": height,
+                "ppm_est": ppm,
+                "ppm_method": "resize_assumed_no_crop",
+                "absolute_scale_verified": False,
+            }
+        )
     photos = pd.DataFrame(rows)
     if photos.empty:
         raise ValueError("No photos found.")
@@ -89,16 +112,23 @@ def load_folds(path, sample_ids, *, expected_folds=(0, 1, 2, 3)):
 def sample_weights(manifest):
     """Uniform sample -> uniform photo -> uniform tile sampling weights."""
     required = ["sample_id", "photo", "tile_id"]
-    if manifest.empty or manifest[required].isna().any().any() or manifest.duplicated(required).any():
+    if (
+        manifest.empty
+        or manifest[required].isna().any().any()
+        or manifest.duplicated(required).any()
+    ):
         raise ValueError("Use a non-empty manifest with unique tile IDs.")
     n_photos = manifest.groupby("sample_id").photo.transform("nunique").to_numpy()
-    n_tiles = manifest.groupby(["sample_id", "photo"]).photo.transform("size").to_numpy()
+    n_tiles = (
+        manifest.groupby(["sample_id", "photo"]).photo.transform("size").to_numpy()
+    )
     weights = 1.0 / (n_photos * n_tiles)
     return weights / weights.sum()
 
 
 class TileDataset:
     """A DataLoader-compatible dataset. Transform takes PIL RGB and returns CHW tensor."""
+
     def __init__(self, manifest, cache_root, labels=None, transform=None):
         self.manifest = manifest.reset_index(drop=True).copy()
         self.cache_root = Path(cache_root)
@@ -116,6 +146,7 @@ class TileDataset:
 
     def __getitem__(self, index):
         import torch
+
         row = self.manifest.iloc[index]
         with Image.open(self.cache_root / row.tile_path) as source:
             image = source.convert("RGB")
@@ -126,9 +157,16 @@ class TileDataset:
             image = self.transform(image)
         if not isinstance(image, torch.Tensor) or image.ndim != 3:
             raise ValueError("Transform must return a CHW torch.Tensor.")
-        result = {"image": image, "sample_id": str(row.sample_id), "photo": str(row.photo), "tile_id": str(row.tile_id)}
+        result = {
+            "image": image,
+            "sample_id": str(row.sample_id),
+            "photo": str(row.photo),
+            "tile_id": str(row.tile_id),
+        }
         if "fold" in row.index and pd.notna(row.fold):
             result["fold"] = int(row.fold)
         if self.targets is not None:
-            result["target"] = torch.tensor(self.targets.loc[row.sample_id].to_numpy(float), dtype=torch.float32)
+            result["target"] = torch.tensor(
+                self.targets.loc[row.sample_id].to_numpy(float), dtype=torch.float32
+            )
         return result

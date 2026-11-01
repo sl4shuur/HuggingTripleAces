@@ -14,13 +14,17 @@ Upload the whole `soilcv/` folder as a code dataset. Keep this folder name so Py
 from pathlib import Path
 import sys
 
-roots = [p.parent for p in Path('/kaggle/input').rglob('soilcv')
-         if (p / '__init__.py').is_file()]
+roots = [
+    p.parent
+    for p in Path("/kaggle/input").rglob("soilcv")
+    if (p / "__init__.py").is_file()
+]
 if len(roots) != 1:
-    raise ValueError('Attach exactly one soilcv code dataset.')
+    raise ValueError("Attach exactly one soilcv code dataset.")
 sys.path.insert(0, str(roots[0]))
 
 import soilcv
+
 print(soilcv.__version__)
 ```
 
@@ -47,7 +51,7 @@ folds = load_folds(DEFAULT_FOLDS_PATH, labels.sample_id)
 
 manifest = make_tile_manifest(photos, tile_mm=64, output_px=288, image_root=DATA_DIR)
 build_tile_cache(manifest, CACHE_DIR, image_root=DATA_DIR)
-manifest = manifest.merge(folds[['sample_id', 'fold']], on='sample_id', how='left')
+manifest = manifest.merge(folds[["sample_id", "fold"]], on="sample_id", how="left")
 ```
 
 `DATA_DIR` is the competition folder. `CACHE_DIR` must be writable, for example `/kaggle/working/soil_tiles`.
@@ -69,17 +73,24 @@ train_tiles = manifest[manifest.fold.notna() & manifest.fold.ne(fold)].copy()
 valid_tiles = manifest[manifest.fold.eq(fold)].copy()
 
 sampler = WeightedRandomSampler(
-    sample_weights(train_tiles), num_samples=len(train_tiles), replacement=True,
+    sample_weights(train_tiles),
+    num_samples=len(train_tiles),
+    replacement=True,
     generator=torch.Generator().manual_seed(42),
 )
 train_loader = DataLoader(
     TileDataset(train_tiles, CACHE_DIR, labels, transform=train_transform),
-    batch_size=16, sampler=sampler, worker_init_fn=seed_worker,
-    generator=torch.Generator().manual_seed(43), persistent_workers=False,
+    batch_size=16,
+    sampler=sampler,
+    worker_init_fn=seed_worker,
+    generator=torch.Generator().manual_seed(43),
+    persistent_workers=False,
 )
 valid_loader = DataLoader(
     TileDataset(valid_tiles, CACHE_DIR, labels, transform=valid_transform),
-    batch_size=16, shuffle=False, persistent_workers=False,
+    batch_size=16,
+    shuffle=False,
+    persistent_workers=False,
 )
 ```
 
@@ -118,16 +129,29 @@ from soilcv.training import fit_supervised_fold
 from soilcv.tracking import start_run
 
 config = ExperimentConfig(
-    experiment_id='cnn-001', stage='cnn', model='your-exact-model-name', fold=fold,
-    versions={'code': soilcv.__version__, 'data': DATA_VERSION, 'cache': CACHE_ID},
-    params={'weights': WEIGHTS_REVISION, 'preprocessing': PREPROCESSING},
+    experiment_id="cnn-001",
+    stage="cnn",
+    model="your-exact-model-name",
+    fold=fold,
+    versions={"code": soilcv.__version__, "data": DATA_VERSION, "cache": CACHE_ID},
+    params={"weights": WEIGHTS_REVISION, "preprocessing": PREPROCESSING},
 )
 valid_labels = labels[labels.sample_id.isin(valid_tiles.sample_id)]
 
 with start_run(config) as run:
     oof, history = fit_supervised_fold(
-        model, train_loader, valid_loader, valid_labels, optimizer, EMDLoss(), config,
-        epochs=20, device=device, amp=True, patience=5, run=run,
+        model,
+        train_loader,
+        valid_loader,
+        valid_labels,
+        optimizer,
+        EMDLoss(),
+        config,
+        epochs=20,
+        device=device,
+        amp=True,
+        patience=5,
+        run=run,
     )
 ```
 
@@ -185,3 +209,14 @@ The ZIP contains `soilcv/` and `release.json` with code/fold hashes and tracking
 - All 16 tests passed in both environments. W&B setup is mocked; a real online login needs your secret.
 
 GPU AMP code is included. These checks used CPU.
+
+## Part 2 and inference
+
+`soilcv.vit` reads complete photos at one shared estimated PPM. It has a small
+ViT from scratch and pretrained Swin-T, sample-level training, camera checks,
+and saved four-fold ensembles. See `VIT_README.md` in the lab folder.
+
+`soilcv.inference.runner.run_checkpoints` reads W&B model artifacts without
+starting a W&B run. Use a string for one checkpoint, or a named group with four
+checkpoints for one complete four-fold ensemble. The runner checks fold IDs,
+recipe and study identity before averaging sample curves.

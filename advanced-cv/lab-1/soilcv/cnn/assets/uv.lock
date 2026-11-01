@@ -725,7 +725,7 @@ wheels = [
 
 [[package]]
 name = "soilcv"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "../" }
 dependencies = [
     { name = "numpy" },
@@ -739,6 +739,7 @@ tracking = [
 ]
 train = [
     { name = "torch" },
+    { name = "torchvision" },
 ]
 
 [package.metadata]
@@ -748,6 +749,7 @@ requires-dist = [
     { name = "pillow", specifier = ">=10" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8" },
     { name = "torch", marker = "extra == 'train'", specifier = ">=2.3" },
+    { name = "torchvision", marker = "extra == 'train'", specifier = ">=0.18" },
     { name = "wandb", marker = "extra == 'tracking'", specifier = ">=0.25.1" },
 ]
 provides-extras = ["train", "tracking", "test"]
