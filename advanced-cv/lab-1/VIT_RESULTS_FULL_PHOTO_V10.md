@@ -1,5 +1,8 @@
 # Full-photo ViT / Swin results (utils v10)
 
+The later local + global study and the combined CNN / ViT comparison are in
+[PART2_RESULTS.md](PART2_RESULTS.md). Keep the v10 scores below separate.
+
 Public scores were checked with the Kaggle competition API on 2026-11-01. All five submissions are COMPLETE. Lower EMD is better. Private scores are not available.
 
 | Recipe | OOF EMD | Fold std | Public EMD | Camera disagreement | Fit GPU hours | Submission ID |

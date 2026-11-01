@@ -1,5 +1,11 @@
 # Part 2: local detail and global context
 
+Completed results and the comparison with CNN are in
+[PART2_RESULTS.md](PART2_RESULTS.md). It includes both Part 2 studies, all nine
+new recipes, ten verified public submissions, ablations, camera and padding
+checks, and limits. [part2_results.json](part2_results.json) stores the displayed
+numbers and submission receipts. The local training notebooks have saved outputs.
+
 Use `vit_scratch.ipynb` and `vit_pretrained.ipynb` for the new study.
 Earlier executed notebooks and all their outputs are in `archive/full_photo_v10/`.
 The new notebooks use fresh `part2_scratch_multiscale` and

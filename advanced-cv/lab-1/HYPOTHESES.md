@@ -135,3 +135,41 @@ There is no clean, stable win for warmup in this study.
 
 The new local-detail inputs and EMD-only stopping remain separate experiments.
 Do not treat these earlier public scores as results of those changes.
+
+## Observed results: local detail and global context
+
+Post-run review on 2026-11-07. The completed local notebooks now contain results
+for all nine recipes. Full tables, source locations and limits are in
+[PART2_RESULTS.md](PART2_RESULTS.md). No extra training or inference was run
+for this review. The pre-run predictions above are unchanged.
+
+H-VIT2-01: the new scratch pipeline has much lower OOF than v10. Patch 16 moves
+from 80.061 to 39.520. Inputs, padding, selection and epoch averaging all changed,
+so this does not isolate the effect of local detail or global context.
+
+H-VIT2-02: patch 32 beats patch 16 on new OOF, 33.918 vs 39.520. This reverses
+the v10 result. Larger patches did not always hurt grain prediction.
+
+H-VIT2-03: no warmup has lower scratch OOF, 34.887 vs 39.520. The expected OOF
+benefit of warmup was not seen in either study. There is no new no-warmup LB.
+
+H-VIT2-04: full multiscale Swin has lower OOF than frozen, 34.053 vs 39.453.
+Scratch patch 32 is close to full Swin. This is not a pure pretraining test.
+
+H-VIT2-05: Swin tiles constant LR has the best new OOF, 32.088. Warmup/cosine
+scores 33.827; the CNN schedule ranking does not carry over. Frozen tiles has
+OOF 34.596 but the best new public EMD, 45.21894. The public set is too small
+to explain the cause of this ranking change. Keep model choice based on CV.
+
+H-VIT2-06: scratch padding changes are near zero on four checked soils.
+Swin changes reach EMD 16.068089 for frozen tiles. Final area-weighted pooling
+does not fully remove padding effects from earlier window attention.
+
+H-VIT2-07: epoch averaging lowers OOF for six recipes and raises it for three.
+Scratch patch 32 best-only OOF is 31.945, but its epoch ensemble scores 33.918.
+The optional third epoch and its camera rule have no isolated test.
+
+The new camera-only checks have small positive or negative domain gaps. They
+do not prove iPhone transfer. Neither low disagreement nor good OOF guarantees
+a good public score. Layer decay, weight decay, stochastic depth and augmentation
+remain recipe settings without isolated ablations.

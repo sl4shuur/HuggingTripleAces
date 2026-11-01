@@ -1,5 +1,9 @@
 # Part 1: full-coverage CNN MIL
 
+The completed CNN scores and their comparison with both ViT studies are in
+[PART2_RESULTS.md](PART2_RESULTS.md). It separates single-fold CNN submissions
+from four-fold transformer submissions.
+
 Use cnn.ipynb, the soil competition data, and the latest soil-cv-utils dataset.
 Select two T4 GPUs, Internet, and the WANDB_API_KEY secret. Then Save & Run All.
 The existing secret binding is reused. W&B entity is public-team. There are no CV-summary or online smoke runs.
