@@ -1,4 +1,4 @@
-"""Keep each complete photo, resize once to a shared estimated pixels/mm."""
+"""Global photo views and detailed physical tiles for one sample bag."""
 
 import json
 import random
@@ -53,10 +53,12 @@ def make_photo_manifest(photos, *, target_ppm=2.0, image_root=None):
                 "target_ppm": float(target_ppm),
                 "actual_ppm_x": output_width * native_ppm / width,
                 "actual_ppm_y": output_height * native_ppm / height,
-                "coverage": 1.0,
-                "missing_native_pixels": 0,
+                "spatial_coverage": 1.0,
+                "cropped_source_area": 0.0,
+                "linear_scale_ratio": float(target_ppm / native_ppm),
+                "pixel_count_ratio": output_width * output_height / (width * height),
                 "interpolation": "LANCZOS",
-                "schema": "full_photo_ppm_v1",
+                "schema": "full_photo_ppm_v2",
             }
         )
     manifest = pd.DataFrame(rows)
@@ -118,14 +120,40 @@ def photo_transform(recipe, train=False):
 
 
 class FullPhotoBags:
-    """One item = all complete photos of one soil; one loss per soil."""
+    """All photos, with global context and every physical tile when requested."""
 
-    def __init__(self, manifest, cache_root, transform, labels=None):
+    def __init__(
+        self,
+        manifest,
+        cache_root,
+        transform,
+        labels=None,
+        *,
+        tiles=None,
+        view_mode="multiscale",
+    ):
+        if view_mode not in {"multiscale", "tiles", "global"}:
+            raise ValueError("Choose multiscale, tiles or global views.")
         self.manifest = manifest.reset_index(drop=True).copy()
         self.root = Path(cache_root)
         self.transform = transform
+        self.view_mode = view_mode
+        self.tiles = tiles
         self.samples = sorted(self.manifest.sample_id.unique())
         self.targets = None
+        if view_mode != "global":
+            if tiles is None or tiles.empty:
+                raise ValueError(
+                    "Detailed views need the complete physical tile manifest."
+                )
+            expected = set(zip(self.manifest.sample_id, self.manifest.photo))
+            supplied = set(zip(tiles.sample_id, tiles.photo))
+            if expected != supplied:
+                raise ValueError(
+                    "Frame and tile manifests must contain the same photos."
+                )
+            if not tiles.coverage.eq(1).all():
+                raise ValueError("Every photo needs complete spatial tile coverage.")
         if labels is not None:
             self.targets = labels.set_index("sample_id")[list(TARGET_COLUMNS)]
             if not set(self.samples) <= set(self.targets.index):
@@ -134,6 +162,10 @@ class FullPhotoBags:
     def __len__(self):
         return len(self.samples)
 
+    def _read(self, relative_path):
+        with Image.open(self.root / relative_path) as image:
+            return self.transform(image.convert("RGB"))
+
     def __getitem__(self, index):
         import torch
 
@@ -141,8 +173,26 @@ class FullPhotoBags:
         rows = self.manifest[self.manifest.sample_id.eq(sample)]
         images = []
         for row in rows.itertuples(index=False):
-            with Image.open(self.root / row.frame_path) as image:
-                images.append(self.transform(image.convert("RGB")))
+            photo = {}
+            if self.view_mode != "tiles":
+                photo["global"] = self._read(row.frame_path)
+            if self.view_mode != "global":
+                local = self.tiles[
+                    self.tiles.sample_id.eq(sample) & self.tiles.photo.eq(row.photo)
+                ].sort_values("tile_id")
+                weights = local.photo_weight.to_numpy(dtype=np.float32)
+                if not np.isclose(weights.sum(), 1):
+                    raise ValueError(
+                        "Overlap-corrected tile weights must sum to one per photo."
+                    )
+                photo["local"] = torch.stack(
+                    [
+                        self._read(tile.tile_path)
+                        for tile in local.itertuples(index=False)
+                    ]
+                )
+                photo["local_weights"] = torch.tensor(weights)
+            images.append(photo)
         result = {
             "image": images,
             "bag_weights": torch.full((len(images),), 1 / len(images)),

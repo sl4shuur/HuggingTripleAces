@@ -19,6 +19,7 @@ from .artifacts import (
     write_json,
 )
 from .camera import improves_checkpoint
+from .checkpoints import prune_candidate_files, restore_candidates, update_candidates
 from .config import save_config
 from .curves import TARGET_COLUMNS, aggregate_predictions, repair_curves
 from .metrics import evaluate_samples
@@ -26,10 +27,16 @@ from .nn import evaluation_mode, freeze_bn_stats
 
 
 def move_images(images, device):
-    """Move a tile batch or a list of variable-size complete photos."""
+    """Move tensors inside a tile batch, photo list or local/global photo dict."""
     if isinstance(images, torch.Tensor):
         return images.to(device)
-    return [image.to(device) for image in images]
+    if isinstance(images, dict):
+        return {key: move_images(value, device) for key, value in images.items()}
+    if isinstance(images, tuple):
+        return tuple(move_images(value, device) for value in images)
+    if isinstance(images, list):
+        return [move_images(value, device) for value in images]
+    return images
 
 
 def batch_ids(batch):
@@ -242,6 +249,7 @@ def fit_supervised_fold(
     selection="emd",
     min_delta=0.0,
     selection_start_epoch=0,
+    keep_top_k=None,
 ):
     """Fit one saved fold. Return best sample predictions and history; load best model weights."""
     if (
@@ -254,6 +262,12 @@ def fit_supervised_fold(
         )
     if patience is not None and patience < 1:
         raise ValueError("patience must be positive or None.")
+    if keep_top_k is not None and (keep_top_k not in {1, 2, 3} or selection != "emd"):
+        raise ValueError("Top-k checkpoints need selection=emd and keep_top_k=1/2/3.")
+    if keep_top_k is not None and min_delta != 0:
+        raise ValueError(
+            "Top-k checkpoints use exact validation EMD, with min_delta=0."
+        )
     if (
         selection not in {"emd", "emd_camera"}
         or not np.isfinite(min_delta)
@@ -310,6 +324,7 @@ def fit_supervised_fold(
         "selection": selection,
         "min_delta": min_delta,
         "selection_start_epoch": selection_start_epoch,
+        "keep_top_k": keep_top_k,
     }
     identity_settings = {
         key: value for key, value in settings.items() if key != "epochs"
@@ -324,6 +339,18 @@ def fit_supervised_fold(
         }
     )
     root = config.output_dir
+    root.mkdir(parents=True, exist_ok=True)
+    if (
+        keep_top_k is not None
+        and not resume_from
+        and (
+            (root / "candidates.json").exists()
+            or any((root / "candidates").glob("epoch_*.pt"))
+        )
+    ):
+        raise ValueError(
+            "Existing checkpoint candidates. Resume last.pt or use a fresh output folder."
+        )
     start_epoch, global_step, best_emd, bad_epochs, history, best_records = (
         0,
         0,
@@ -334,6 +361,7 @@ def fit_supervised_fold(
     )
     selected_metrics = None
     selected_epoch = None
+    candidate_records = []
     if resume_from:
         state = load_checkpoint(
             resume_from,
@@ -349,6 +377,7 @@ def fit_supervised_fold(
         selected_metrics = metadata["selected_metrics"]
         selected_epoch = metadata["selected_epoch"]
         history, best_records = metadata["history"], metadata["best_predictions"]
+        candidate_records = metadata.get("candidate_records", [])
         if run is not None and state["run_id"] != run.id:
             raise ValueError("Resume the checkpoint's W&B run ID, not a different run.")
         _restore_loader_state(train_loader, metadata["train_loader_rng"])
@@ -367,6 +396,12 @@ def fit_supervised_fold(
             shutil.copyfile(source_best, root / "best.pt")
         if start_epoch >= epochs:
             raise ValueError("epochs must be larger than the saved epoch count.")
+        if keep_top_k is not None:
+            if selected_metrics is not None and not candidate_records:
+                raise ValueError("Resume needs the saved EMD checkpoint candidates.")
+            restore_candidates(
+                Path(resume_from).parent, root, candidate_records, keep_top_k
+            )
     root.mkdir(parents=True, exist_ok=True)
     save_config(config, root / "config.json")
     save_environment(root / "environment.json")
@@ -396,7 +431,7 @@ def fit_supervised_fold(
             validation, predictions = (validation_fn or validate_epoch)(
                 model, valid_loader, valid_labels, device=device, amp=amp, repair=repair
             )
-            if scheduler is not None:
+            if scheduler is not None and train_metrics["optimizer_steps"] > 0:
                 if scheduler_step == "epoch":
                     scheduler.step()
                 elif scheduler_step == "metric":
@@ -413,6 +448,17 @@ def fit_supervised_fold(
                 selected_epoch = epoch
             elif eligible:
                 bad_epochs += 1
+            if eligible and keep_top_k is not None:
+                candidate_records = update_candidates(
+                    root,
+                    candidate_records,
+                    model,
+                    epoch,
+                    validation,
+                    predictions,
+                    top_k=keep_top_k,
+                    prune=False,
+                )
             history.append({"epoch": epoch, "train": train_metrics, "val": validation})
             metadata = {
                 "identity": identity,
@@ -421,6 +467,7 @@ def fit_supervised_fold(
                 "history": history,
                 "selected_metrics": selected_metrics,
                 "selected_epoch": selected_epoch,
+                "candidate_records": candidate_records,
                 "best_predictions": best_records,
                 "train_loader_rng": _loader_state(train_loader),
                 "valid_loader_rng": _loader_state(valid_loader),
@@ -438,19 +485,22 @@ def fit_supervised_fold(
             if improved:
                 save_checkpoint(root / "best.pt", model, **checkpoint_args)
             save_checkpoint(root / "last.pt", model, **checkpoint_args)
+            if keep_top_k is not None:
+                # The previous last.pt can reference a pruned candidate until this save.
+                prune_candidate_files(root, candidate_records)
             write_json(root / "history.json", history)
             if run is not None:
                 from .tracking import log_epoch
 
                 log_epoch(run, epoch, train_metrics, validation)
                 if selected_metrics is not None:
-                    run.summary["selected_pair/epoch"] = selected_epoch
-                    run.summary["selected_pair/emd"] = selected_metrics["emd"]
-                    if selection == "emd_camera":
-                        run.summary["selected_pair/camera_disagreement"] = (
-                            selected_metrics["camera_disagreement"]
-                        )
-                    run.summary["selected_pair/selection"] = selection
+                    run.summary["selected/epoch"] = selected_epoch
+                    run.summary["selected/emd"] = selected_metrics["emd"]
+                    if "camera_disagreement" in selected_metrics:
+                        run.summary["selected/camera_disagreement"] = selected_metrics[
+                            "camera_disagreement"
+                        ]
+                    run.summary["selected/selection"] = selection
     load_checkpoint(
         root / "best.pt",
         model,

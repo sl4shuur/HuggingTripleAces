@@ -1,4 +1,4 @@
-"""Lecture-style ViT and pretrained Swin, with one curve per full photo bag."""
+"""Shared encoders for detailed tiles, global context, and sample-level curves."""
 
 import numpy as np
 import torch
@@ -11,10 +11,23 @@ from torchvision.ops import StochasticDepth
 from soilcv.nn import MassCurveHead, set_trainable
 
 
-def pad_to_multiple(image, multiple):
-    """Pad normalized pixels on the right and bottom. Never discard an edge."""
+def pad_to_multiple(image, multiple, extra=0):
+    """Repeat edge pixels for alignment. Original pixels stay unchanged."""
+    if multiple < 1 or extra < 0:
+        raise ValueError("Use positive alignment and non-negative extra padding.")
     height, width = image.shape[-2:]
-    return F.pad(image, (0, (-width) % multiple, 0, (-height) % multiple))
+    right = (-(width + extra)) % multiple + extra
+    bottom = (-(height + extra)) % multiple + extra
+    return F.pad(image, (0, right, 0, bottom), mode="replicate")
+
+
+def valid_cell_area(height, width, rows, columns, stride, *, device):
+    """Actual source area in each cell; full padding cells have zero area."""
+    y = torch.arange(rows, device=device)
+    x = torch.arange(columns, device=device)
+    valid_y = (height - stride * y).clamp(0, stride).float()
+    valid_x = (width - stride * x).clamp(0, stride).float()
+    return valid_y[:, None] * valid_x[None, :]
 
 
 def position_2d(height, width, dim, *, device, dtype):
@@ -45,14 +58,20 @@ class Attention(nn.Module):
         self.projection = nn.Linear(dim, dim)
         self.dropout = dropout
 
-    def forward(self, tokens):
+    def forward(self, tokens, valid_fraction):
         batch, length, dim = tokens.shape
         qkv = self.qkv(tokens).reshape(batch, length, 3, self.heads, dim // self.heads)
         query, key, value = qkv.permute(2, 0, 3, 1, 4).unbind(0)
+        # A partial edge patch gets its real area fraction as an attention prior.
+        # Fully padded patches can never be keys, even in later blocks.
+        key_bias = torch.where(valid_fraction > 0, valid_fraction.log(), -torch.inf).to(
+            query.dtype
+        )
         values = F.scaled_dot_product_attention(
             query,
             key,
             value,
+            attn_mask=key_bias[None, None, None, :],
             dropout_p=self.dropout if self.training else 0.0,
         )
         return self.projection(values.transpose(1, 2).reshape(batch, length, dim))
@@ -73,8 +92,10 @@ class TransformerBlock(nn.Module):
         )
         self.drop_path = StochasticDepth(drop_path, mode="row")
 
-    def forward(self, tokens):
-        tokens = tokens + self.drop_path(self.attention(self.norm1(tokens)))
+    def forward(self, tokens, valid_fraction):
+        tokens = tokens + self.drop_path(
+            self.attention(self.norm1(tokens), valid_fraction)
+        )
         return tokens + self.drop_path(self.mlp(self.norm2(tokens)))
 
 
@@ -96,6 +117,8 @@ class ScratchViT(nn.Module):
         if patch_size < 1 or depth < 1 or dim % 4 or dim % heads:
             raise ValueError("Use a valid patch size, depth and embedding dimension.")
         self.patch_size = patch_size
+        self.padding_multiple = patch_size
+        self.padding_extra = 0
         self.max_tokens = max_tokens
         self.output_dim = dim
         self.patch_embed = nn.Conv2d(3, dim, patch_size, stride=patch_size)
@@ -122,13 +145,25 @@ class ScratchViT(nn.Module):
             nn.init.zeros_(module.bias)
 
     def forward(self, image):
-        # Each image is padded alone, so every patch contains real image pixels.
-        patches = self.patch_embed(pad_to_multiple(image, self.patch_size))
+        source_height, source_width = image.shape[-2:]
+        padded = pad_to_multiple(image, self.patch_size, self.padding_extra)
+        patches = self.patch_embed(padded)
         height, width = patches.shape[-2:]
         if height * width > self.max_tokens:
             raise ValueError(
-                "Too many tokens. Lower the common PPM for the whole study."
+                "Too many tokens. Lower the common PPM for the global view."
             )
+        area = valid_cell_area(
+            source_height,
+            source_width,
+            height,
+            width,
+            self.patch_size,
+            device=image.device,
+        )
+        valid_fraction = torch.cat(
+            [torch.ones(1, device=image.device), area.flatten() / self.patch_size**2]
+        )
         tokens = patches.flatten(2).transpose(1, 2)
         positions = position_2d(
             height, width, self.output_dim, device=tokens.device, dtype=tokens.dtype
@@ -136,7 +171,7 @@ class ScratchViT(nn.Module):
         tokens = tokens + positions[None]
         tokens = torch.cat([self.cls.expand(len(image), -1, -1), tokens], dim=1)
         for block in self.blocks:
-            tokens = block(tokens)
+            tokens = block(tokens, valid_fraction)
         return self.norm(tokens)[:, 0]
 
     def layer_ids(self):
@@ -167,6 +202,8 @@ class SwinPhotoEncoder(nn.Module):
         self.output_dim = self.backbone.head.in_features
         self.backbone.head = nn.Identity()
         self.tuning = tuning
+        self.padding_multiple = 32
+        self.padding_extra = 0
         if tuning != "full":
             set_trainable(self.backbone, False)
         if tuning == "last_stage":
@@ -184,15 +221,19 @@ class SwinPhotoEncoder(nn.Module):
 
     def forward(self, image):
         height, width = image.shape[-2:]
-        # The hierarchy downsamples by 32. Padding retains every source pixel.
-        features = self.backbone.features(pad_to_multiple(image, 32))
+        features = self.backbone.features(
+            pad_to_multiple(image, self.padding_multiple, self.padding_extra)
+        )
         features = self.backbone.norm(features)
-        rows = torch.arange(features.shape[1], device=image.device)
-        columns = torch.arange(features.shape[2], device=image.device)
-        valid_y = (height - 32 * rows).clamp(0, 32).float()
-        valid_x = (width - 32 * columns).clamp(0, 32).float()
-        area = valid_y[:, None] * valid_x[None, :]
-        # Partial edge cells count by valid area, not padded area.
+        area = valid_cell_area(
+            height,
+            width,
+            features.shape[1],
+            features.shape[2],
+            32,
+            device=image.device,
+        )
+        # Pool only valid image area. Padding can still affect internal windows.
         return (features.float() * area[None, :, :, None]).sum((1, 2)) / area.sum()
 
     def layer_ids(self):
@@ -207,10 +248,16 @@ class SwinPhotoEncoder(nn.Module):
 
 
 class FullFrameModel(nn.Module):
-    """Encode all complete photos, average features, predict one sample curve."""
+    """Combine all detailed tiles with global context, then average photos."""
 
     def __init__(self, recipe, train_mean, *, pretrained=True):
         super().__init__()
+        self.view_mode = recipe.get("view_mode", "multiscale")
+        if self.view_mode not in {"multiscale", "tiles", "global"}:
+            raise ValueError("Choose multiscale, tiles or global views.")
+        self.chunk_size = recipe.get("chunk_size", 8)
+        if not isinstance(self.chunk_size, int) or self.chunk_size < 1:
+            raise ValueError("chunk_size must be a positive integer.")
         if recipe["arch"] == "scratch_vit":
             self.encoder = ScratchViT(
                 patch_size=recipe.get("patch_size", 16),
@@ -232,7 +279,10 @@ class FullFrameModel(nn.Module):
             self.frozen = tuning == "frozen"
         else:
             raise ValueError("Unknown full-photo Transformer architecture.")
-        self.head = MassCurveHead(self.encoder.output_dim)
+        feature_size = self.encoder.output_dim * (
+            2 if self.view_mode == "multiscale" else 1
+        )
+        self.head = MassCurveHead(feature_size)
         mass = np.maximum(np.diff(np.r_[0, train_mean]), 0.001)
         if mass.shape != (11,) or not np.isfinite(mass).all():
             raise ValueError("Provide an 11-bin training-fold mean curve.")
@@ -248,16 +298,41 @@ class FullFrameModel(nn.Module):
             self.encoder.eval()
         return self
 
+    def _encode_batch(self, images):
+        if images.ndim != 4 or images.shape[1] != 3 or len(images) == 0:
+            raise ValueError("The encoder needs a non-empty NCHW RGB batch.")
+        if self.training and not self.frozen:
+            return checkpoint(self.encoder, images, use_reentrant=False)
+        return self.encoder(images)
+
+    def _local_feature(self, photo):
+        images, weights = photo["local"], photo["local_weights"].float()
+        if (
+            len(weights) != len(images)
+            or not torch.isfinite(weights).all()
+            or (weights < 0).any()
+            or weights.sum() <= 0
+        ):
+            raise ValueError("Use one finite non-negative area weight per local tile.")
+        features = torch.cat(
+            [self._encode_batch(chunk) for chunk in images.split(self.chunk_size)]
+        )
+        return (features.float() * weights[:, None]).sum(
+            0, keepdim=True
+        ) / weights.sum()
+
     def encode(self, images):
         features = []
-        for image in images:
-            if image.ndim != 3 or image.shape[0] != 3:
-                raise ValueError("Each complete photo must be a CHW RGB tensor.")
-            if self.training and not self.frozen:
-                values = checkpoint(self.encoder, image[None], use_reentrant=False)
-            else:
-                values = self.encoder(image[None])
-            features.append(values)
+        for photo in images:
+            if not isinstance(photo, dict):
+                raise TypeError("Each photo must contain its named global/local views.")
+            views = []
+            if self.view_mode != "global":
+                views.append(self._local_feature(photo))
+            if self.view_mode != "tiles":
+                views.append(self._encode_batch(photo["global"][None]))
+            # The head gets separate local and global feature slots.
+            features.append(torch.cat(views, dim=1))
         if not features:
             raise ValueError("A sample needs at least one photo.")
         return torch.cat(features)

@@ -202,19 +202,20 @@ python package_soilcv.py /tmp/soil-cv-utils-0.1.0.zip
 
 The ZIP contains `soilcv/` and `release.json` with code/fold hashes and tracking defaults. It excludes test files, Python bytecode, and notebook outputs. Upload it as a Kaggle Dataset. This command does not publish anything.
 
-## Tested CPU environments
+## Test environments
 
-- Local: Python 3.14, NumPy 2.5.4, pandas 3.1.0, PyTorch 2.15.0+cpu.
-- Kaggle: Python 3.13, NumPy 2.1.3, pandas 2.3.3, PyTorch 2.11.0+cpu, W&B SDK 0.28.1.
-- All 16 tests passed in both environments. W&B setup is mocked; a real online login needs your secret.
-
-GPU AMP code is included. These checks used CPU.
+The local test suite uses CPU PyTorch. Short Kaggle smoke checks use
+Python 3.13, PyTorch 2.11.0 + CUDA 12.8, torchvision 0.26.0 and T4 GPUs.
+Smoke checks use a few photos, offline tracking and temporary output folders.
+They do not run the full study or create online W&B runs.
 
 ## Part 2 and inference
 
-`soilcv.vit` reads complete photos at one shared estimated PPM. It has a small
-ViT from scratch and pretrained Swin-T, sample-level training, camera checks,
-and saved four-fold ensembles. See `VIT_README.md` in the lab folder.
+`soilcv.vit` combines detailed 64 mm / 288 px tiles with full-photo context.
+It has a small ViT from scratch, pretrained Swin-T, tile-only Swin MIL,
+sample-level training, camera checks and saved four-fold ensembles.
+Best/early stopping use EMD. Each fold keeps three weight states and selects
+two, plus an optional third with lower camera disagreement than rank two. See `VIT_README.md` in the lab folder.
 
 `soilcv.inference.runner.run_checkpoints` reads W&B model artifacts without
 starting a W&B run. Use a string for one checkpoint, or a named group with four

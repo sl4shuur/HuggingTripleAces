@@ -1,12 +1,14 @@
 """Report one complete Part 2 study with four-fold ensembles."""
 
 import json
+import math
 from pathlib import Path
 
 import pandas as pd
 
 from soilcv.artifacts import identity_hash, package_identity, write_json
 from soilcv.camera import camera_metrics, domain_metrics, paired_camera_errors
+from soilcv.checkpoints import load_candidates
 from soilcv.curves import make_submission
 from soilcv.inference.runner import ensemble_predictions
 from soilcv.metrics import summarize_cv
@@ -54,6 +56,35 @@ def check_camera_folds(camera, folds):
         raise ValueError("Camera curves have the wrong held-out fold.")
 
 
+def read_padding_check(folder, experiment, fold, folds):
+    metrics = json.loads((folder / "padding_diagnostic.json").read_text())
+    pairs = pd.read_csv(folder / "padding_pairs.csv")
+    heldout = set(folds.loc[folds.fold.eq(fold), "sample_id"])
+    if (
+        pairs.empty
+        or pairs.sample_id.duplicated().any()
+        or not set(pairs.sample_id) <= heldout
+    ):
+        raise ValueError(
+            "Padding checks must use unique held-out samples from this fold."
+        )
+    if metrics["padding_samples"] != len(pairs):
+        raise ValueError("Padding sample count differs from its saved pair table.")
+    values = pairs.padding_emd.to_numpy(dtype=float)
+    if any(not math.isfinite(value) or value < 0 for value in values):
+        raise ValueError("Padding EMD must be finite and non-negative.")
+    if not math.isclose(
+        metrics["padding_max_emd"], float(values.max()), rel_tol=1e-6, abs_tol=1e-9
+    ):
+        raise ValueError("Padding summary differs from its saved pair table.")
+    return {
+        "experiment": experiment,
+        "fold": fold,
+        "checked_samples": ",".join(pairs.sample_id.astype(str)),
+        **metrics,
+    }
+
+
 def collect_results(root=None, recipes=None):
     from .experiments import DOMAIN_BASELINE, RECIPES, ROOT
 
@@ -82,18 +113,26 @@ def collect_results(root=None, recipes=None):
     camera_rows = []
     pair_rows = []
     predictions = {}
+    padding_checks = []
     for recipe in recipes:
         name = recipe["id"]
         oof = []
+        best_only = []
         test = []
         cameras = []
         results = []
+        padding_rows = []
         for fold in range(4):
             folder, result = read_fold(root, metadata, name, fold)
             results.append(result)
+            padding = read_padding_check(folder, name, fold, folds)
+            padding_rows.append(padding)
+            padding_checks.append(padding)
             oof.append(pd.read_csv(folder / "oof.csv"))
+            best_only.append(pd.read_csv(folder / "best_only_oof.csv"))
             test.append(pd.read_csv(folder / "test_predictions.csv"))
             cameras.append(pd.read_csv(folder / "camera_predictions.csv"))
+            candidates = load_candidates(folder)
             checkpoints.append(
                 {
                     "experiment": name,
@@ -101,11 +140,18 @@ def collect_results(root=None, recipes=None):
                     "run_id": metadata["run_id"],
                     "wandb_run": result["run_url"],
                     "artifact": result["checkpoint_artifact"],
+                    "selected_epochs": ",".join(
+                        str(row["epoch"]) for row in candidates
+                    ),
+                    "selected_checkpoint_count": len(candidates),
                 }
             )
         combined = pd.concat(oof, ignore_index=True)
         predictions[name] = combined
         scores = summarize_cv(labels, combined, folds)
+        best_combined = pd.concat(best_only, ignore_index=True)
+        best_scores = summarize_cv(labels, best_combined, folds)
+        best_combined.to_csv(output / f"{name}_best_only_oof.csv", index=False)
         combined.to_csv(output / f"{name}_oof.csv", index=False)
         submission = ensemble_predictions(test, template)
         make_submission(submission, template, output / f"{name}_submission.csv")
@@ -122,9 +168,19 @@ def collect_results(root=None, recipes=None):
                 "experiment": name,
                 "run_id": metadata["run_id"],
                 "arch": recipe["arch"],
+                "view_mode": recipe.get("view_mode", "multiscale"),
+                "local_ppm": recipe.get("pixels", 288) / recipe.get("tile_mm", 64),
+                "context_ppm": recipe.get("target_ppm", 2.0),
                 "cv_emd": scores["emd"],
                 "fold_mean": scores["fold_mean"],
                 "fold_std": scores["fold_std"],
+                "best_only_cv_emd": best_scores["emd"],
+                "best_only_fold_std": best_scores["fold_std"],
+                "padding_samples": sum(row["padding_samples"] for row in padding_rows),
+                "padding_max_emd": max(row["padding_max_emd"] for row in padding_rows),
+                "selected_checkpoints_per_fold": ",".join(
+                    str(result["selected_checkpoint_count"]) for result in results
+                ),
                 **metrics,
                 "gpu_hours": sum(result["gpu_hours"] for result in results),
                 "peak_gpu_mb": max(result["peak_gpu_memory_mb"] for result in results),
@@ -140,6 +196,7 @@ def collect_results(root=None, recipes=None):
         )
     table = pd.DataFrame(rows).sort_values("cv_emd").reset_index(drop=True)
     table.to_csv(output / "vit_results.csv", index=False)
+    pd.DataFrame(padding_checks).to_csv(output / "padding_checks.csv", index=False)
     pd.DataFrame(checkpoints).to_csv(output / "vit_checkpoints.csv", index=False)
     write_json(
         output / "inference_ensembles.json",
@@ -176,7 +233,7 @@ def collect_results(root=None, recipes=None):
             "cv_emd": float(best.cv_emd),
             "camera_disagreement": float(best.camera_disagreement),
             "selection_rule": "lowest standard sample OOF EMD; camera metric reported separately",
-            "test_prediction": "equal mean of four fold curves of one recipe",
+            "test_prediction": "mean of four folds; each fold uses its same selected 2/3 EMD epochs",
             "competition_submission_made": False,
         },
     )
@@ -236,15 +293,17 @@ def write_report(root, metadata, table, domain):
         f"Code hash: `{metadata['identity']['soilcv']['source_hash']}`.",
         "",
         "The same four sample folds are used for every model. Lower EMD is better.",
-        "Each test CSV is the mean of four fold models of the same recipe.",
+        "Each test CSV is the mean of four folds of the same recipe.",
+        "Each fold averages its top two validation EMD epochs. Rank three joins only if its camera disagreement is lower than rank two.",
+        "The OOF curve uses the exact same selected epochs as test inference.",
         "",
-        "| Recipe | OOF EMD | Fold std | Camera gap | Fit GPU hours | Peak MB |",
-        "| --- | ---: | ---: | ---: | ---: | ---: |",
+        "| Recipe | Input | Epoch ensemble EMD | Best-only EMD | Fold std | Camera disagreement | GPU hours |",
+        "| --- | --- | ---: | ---: | ---: | ---: | ---: |",
     ]
     for row in table.itertuples():
         lines.append(
-            f"| {row.experiment} | {row.cv_emd:.3f} | {row.fold_std:.3f} | "
-            f"{row.camera_disagreement:.3f} | {row.gpu_hours:.3f} | {row.peak_gpu_mb:.0f} |"
+            f"| {row.experiment} | {row.view_mode} | {row.cv_emd:.3f} | {row.best_only_cv_emd:.3f} | "
+            f"{row.fold_std:.3f} | {row.camera_disagreement:.3f} | {row.gpu_hours:.3f} |"
         )
     lines.extend(
         [
@@ -270,22 +329,51 @@ def write_report(root, metadata, table, domain):
     lines.extend(
         [
             "",
-            "A positive gap means the held-out camera has a larger error.",
+            "A positive cross-camera gap means the held-out camera has a larger error.",
             "Camera and view can both change. This does not measure iPhone accuracy.",
             "These checks are separate from the standard model ranking.",
             "",
+            "## Padding check",
+            "",
+            "Each fold checks one held-out soil with the best EMD model.",
+            "Only the padded canvas changes. The source image content and scale stay the same.",
+            "This is a sensitivity check, not a label error or proof of camera robustness.",
+            "Per-fold values and checked sample IDs are in results/padding_checks.csv.",
+            "",
+            "| Recipe | Checked soils | Largest EMD change |",
+            "| --- | ---: | ---: |",
+        ]
+    )
+    for row in table.itertuples():
+        lines.append(
+            f"| {row.experiment} | {row.padding_samples} | {row.padding_max_emd:.6f} |"
+        )
+    lines.extend(
+        [
+            "",
             "## Input and limits",
             "",
-            "Each full photo is resized once to one common estimated pixels-per-mm scale.",
-            "No source area is cut out. Small grains can still be lost by downsampling.",
+            "The global view uses full photos at 2 estimated pixels/mm for context.",
+            "The local view uses all 64 mm tiles at 288 px, about 4.5 pixels/mm, for detail.",
+            "Multiscale models join local and global features before the sample curve head.",
+            "Tile-only Swin models use the same local physical grid as CNN MIL.",
+            "Spatial coverage measures area, not retained image information.",
+            "image_geometry.csv also reports the linear scale ratio and pixel count ratio.",
+            "Both views still downsample some source images. No claim of lossless detail is made.",
             "The physical scale still depends on the no-crop assumption in the source data.",
-            "Photos keep their shape. Padding only fits the patch grid.",
+            "Photos keep their shape. Edge padding repeats border pixels.",
+            "Scratch attention weights partial patches by real area and masks empty tokens.",
+            "Swin final pooling uses real area. Earlier Swin attention can still see padding.",
+            "Each fold saves a padding sensitivity check on one held-out soil, using the best EMD model.",
             "Each photo has equal sample weight. One sample curve gets one loss.",
             "",
-            "Best epochs use two separate metrics: sample EMD and camera disagreement.",
-            "The first three epochs are a fixed burn-in. Selection starts at epoch four.",
-            "A new checkpoint must not be worse on either metric and must improve one.",
-            "This strict rule can keep an early model. It does not use a weighted score.",
+            "Best checkpoint and early stopping use validation EMD only, from epoch one.",
+            "Camera disagreement is logged as a diagnostic. It cannot block a better EMD checkpoint.",
+            "Three EMD-ranked weight files are kept. The optional third prediction uses the camera rule above.",
+            "Best-only OOF is reported next to the selected epoch ensemble OOF.",
+            "The camera rule is a validation-based choice too. These OOF scores can be optimistic.",
+            "Large temporary optimizer checkpoints are removed only after a fold succeeds.",
+            "All top-three inference weights, selection metadata and OOF curves are kept.",
             "Both validation cameras affect epoch selection in the camera stress test.",
             "The second camera is absent from training updates, but not from model selection.",
             "We still select epochs on few held-out soils. CV can be optimistic.",

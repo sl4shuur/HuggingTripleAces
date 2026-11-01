@@ -6,15 +6,12 @@ import tempfile
 from pathlib import Path
 from urllib.parse import urlparse
 
-import numpy as np
-
 from soilcv.artifacts import identity_hash, write_json
 from soilcv.curves import (
-    TARGET_COLUMNS,
     align_samples,
     make_submission,
-    validate_curves,
 )
+from soilcv.predictions import mean_curves
 
 DEFAULT_PROJECT = "public-team/soil-grain-size"
 
@@ -96,14 +93,8 @@ def ensemble_predictions(predictions, template):
     """Align before averaging. A wrong sample ID must never become a silent NaN."""
     if len(predictions) != 4:
         raise ValueError("Expected four fold predictions.")
-    arrays = []
-    for frame in predictions:
-        aligned = align_samples(template, frame)
-        arrays.append(validate_curves(aligned[list(TARGET_COLUMNS)]))
-    output = template[["sample_id"]].copy()
-    output[list(TARGET_COLUMNS)] = np.mean(arrays, axis=0)
-    validate_curves(output[list(TARGET_COLUMNS)])
-    return output
+    aligned = [align_samples(template, frame) for frame in predictions]
+    return align_samples(template[["sample_id"]], mean_curves(aligned))
 
 
 def predict_checkpoint(folder, config, photos, cache_root, device):
@@ -125,12 +116,10 @@ def predict_checkpoint(folder, config, photos, cache_root, device):
         loader = DataLoader(dataset, batch_size=1, collate_fn=one_bag, num_workers=0)
         predictions, _ = predict_bags(model, loader, device=device, amp=True)
     elif config["stage"] == "vit_fullframe":
-        from soilcv.vit.inference import load_model, predict_from_photos
+        from soilcv.vit.inference import predict_fold
 
-        model, recipe = load_model(folder, device)
-        predictions = predict_from_photos(
-            model, recipe, photos, cache_root, device=device, amp=True
-        )
+        predictions = predict_fold(folder, photos, cache_root, device=device, amp=True)
+        model = None
     else:
         raise ValueError("Unsupported model stage: " + config["stage"])
     del model
