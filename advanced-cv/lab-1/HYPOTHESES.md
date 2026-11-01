@@ -70,3 +70,46 @@ a training-camera stress test, not an untouched device test or an iPhone proxy.
 Save each recipe's complete OOF curves and a true four-fold test ensemble.
 Do not rank camera diagnostic runs as ordinary CV recipes. Keep earlier outputs.
 No automatic competition submissions or W&B CV-summary runs are planned.
+
+# Part 2 revision: local detail and global context
+
+This plan replaces the full-photo-only input and Pareto checkpoint rule above.
+Keep the old plan and all earlier results as a record. Do not retrain CNNs.
+Keep the same four soil folds and seed 42 + fold.
+
+Each photo now has two views. All 64 mm grid tiles at 288 px give local detail
+at about 4.5 px/mm. The full photo at 2 px/mm gives global context only.
+Both views use the same encoder. Pool local features with overlap-area weights,
+join local and global features, then average photos before one curve head.
+Do not call the global view a high-detail image. Local tiles also do not keep
+all native iPhone detail. They keep the physical scale used by the CNN study.
+
+| ID | Comparison | Prediction before training |
+| --- | --- | --- |
+| H-VIT2-01 | Local + global vs the earlier full-photo-only plan | Local inputs may keep grain texture that 2 px/mm removed. Context may help large structures. This is a new input experiment, not proof that ViT beats CNN. |
+| H-VIT2-02 | Scratch patch 16 vs 32, with the same two views | Patch 16 may keep more useful local texture, at a higher attention cost. |
+| H-VIT2-03 | Scratch warmup vs no warmup | Warmup may help early updates. Keep all other input and training settings fixed. |
+| H-VIT2-04 | Frozen, last-stage, full-tuned multiscale Swin | Pretraining may help with few soils. More tuning can still overfit. |
+| H-VIT2-05 | Swin MIL, only 64 mm / 288 px tiles | Use the CNN physical input and sample pooling. Compare frozen, constant LR, and warmup/cosine. The constant and cosine recipes differ only in schedule. |
+| H-VIT2-06 | Prediction after a small padding change | Replicate padding and valid-area handling may reduce artificial border effects. Swin can still use padding inside attention. Measure EMD between the two predictions. |
+| H-VIT2-07 | Best EMD vs the selected epoch ensemble | The top two EMD checkpoints may be more stable than one epoch. Include rank three only when its camera disagreement is lower than rank two. This is a validation-based heuristic, not an independent robustness test. |
+
+Best checkpoint and early stopping use validation EMD only, from epoch one.
+Camera disagreement stays in W&B as a separate diagnostic. Save the top three
+unique epochs by EMD. Use the top two for predictions. Use the third as well
+only if its camera disagreement is strictly lower than the second's.
+The same chosen epoch weights must produce OOF and test curves. Then average
+four fold predictions. Save best-only OOF curves too, so the heuristic is visible.
+This uses validation twice and can make the reported CV optimistic.
+
+Report spatial coverage separately from resolution loss: cropped source area,
+linear scale ratio and output/native pixel count ratio. Padding is not soil.
+Scratch attention accounts for valid patch area. Keep a small padding stress
+check for Swin instead of rewriting its pretrained attention blocks.
+
+Keep the existing camera protocols and sample folds. Physical field of view,
+photo overlap and foreground segmentation are deferred to the SSL stage.
+Use a fresh output folder for this revision. Keep the three candidate weight
+files; full optimizer snapshots are temporary while a fold is training.
+No notebooks or datasets are published in this revision. Smoke tests are short,
+offline for W&B, and use only a small part of the data.
