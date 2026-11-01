@@ -28,13 +28,13 @@ In this repo, open the notebook in `advanced-cv/lab-1/`; `import soilcv` works t
 
 ## Part 1 on Kaggle
 
-The dataset also includes `soilcv.cnn`: models, the two-GPU queue, report code,
-inference, and environment templates. Import `cnn.ipynb`, attach the latest code
-dataset and soil data, enable Internet and the `WANDB_API_KEY` secret, then use
-Save & Run All with two T4 GPUs. No helper files are needed next to the notebook.
-Each fold is tracked online in `public-team/soil-grain-size`; no CV-summary runs
-are created. The full study is saved under `/kaggle/working/part1_cnn`, with
-`submission.csv` at the top level. Kaggle keeps these files in notebook Outputs.
+The dataset includes `soilcv.cnn` and `soilcv.bags` for full-coverage sample-level MIL.
+Run `cnn.ipynb` with the latest code dataset, competition data, Internet, two T4 GPUs
+and the `WANDB_API_KEY` secret. All photos and grid tiles enter every sample bag.
+Coverage, direct native-to-224/288 caches, paired camera curves and reload checks
+are saved in `/kaggle/working/part1_mil`. A separate `submission.csv` is at the top level.
+W&B tracks folds in `public-team/soil-grain-size`, with no CV-summary runs.
+
 
 ## Data, folds, and cache
 

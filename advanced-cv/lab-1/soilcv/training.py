@@ -53,11 +53,12 @@ def train_one_epoch(model, loader, optimizer, loss_fn, *, device="cpu", amp=Fals
     total_loss, seen, window_size, updates, skipped = 0.0, 0, 0, 0, 0
     for batch_index, batch in enumerate(loader):
         image, target = batch["image"].to(device), batch["target"].to(device)
-        size = len(image)
+        size = len(target)
         if size == 0:
             raise ValueError("Empty training batch.")
         with torch.autocast(device_type=device.type, enabled=use_amp):
-            loss = loss_fn(model(image), target)
+            prediction = model(image, batch['bag_weights'].to(device)) if 'bag_weights' in batch else model(image)
+            loss = loss_fn(prediction, target)
         if loss.numel() != 1 or not torch.isfinite(loss):
             raise FloatingPointError("Expected one finite mean loss.")
         scaler.scale(loss * size).backward()
@@ -137,7 +138,7 @@ def _restore_loader_state(loader, states):
 def fit_supervised_fold(model, train_loader, valid_loader, valid_labels, optimizer, loss_fn, config, *, epochs=10,
                         device="cpu", amp=False, scheduler=None, scheduler_step="epoch", patience=None,
                         accumulation_steps=1, clip_grad=None, freeze_batchnorm=False, frozen_modules=(),
-                        repair=False, run=None, resume_from=None):
+                        repair=False, run=None, resume_from=None, validation_fn=None):
     """Fit one saved fold. Return best sample predictions and history; load best model weights."""
     if config.fold is None or epochs < 1 or scheduler_step not in {"epoch", "batch", "metric"}:
         raise ValueError("Set a fold, positive epochs, and scheduler_step=epoch/batch/metric.")
@@ -199,12 +200,13 @@ def fit_supervised_fold(model, train_loader, valid_loader, valid_labels, optimiz
                 scheduler=scheduler if scheduler_step == "batch" else None, freeze_batchnorm=freeze_batchnorm,
                 frozen_modules=frozen_modules, global_step=global_step)
             global_step = train_metrics["global_step"]
-            validation, predictions = validate_epoch(model, valid_loader, valid_labels, device=device, amp=amp, repair=repair)
+            validation, predictions = (validation_fn or validate_epoch)(model, valid_loader, valid_labels, device=device, amp=amp, repair=repair)
             if scheduler is not None:
                 if scheduler_step == "epoch":
                     scheduler.step()
                 elif scheduler_step == "metric":
                     scheduler.step(validation["emd"])
+            # TODO: compare EMA/fixed epochs and repeat finalists on more splits when time allows.
             improved = validation["emd"] < best_emd
             if improved:
                 best_emd, bad_epochs = validation["emd"], 0

@@ -1,215 +1,149 @@
-"""Build the Part 1 report from complete, saved sample-level predictions."""
+"""Generate current-run MIL results. Never mix numbers from different runs."""
 import json
 from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from PIL import Image
-
-from .experiments import ROOT, CACHE, RECIPES
-from soilcv.curves import TARGET_COLUMNS, SIEVE_MM, align_samples, make_submission
-from soilcv.metrics import summarize_cv, group_errors, emd_per_sample
-from soilcv.artifacts import write_json, file_hash
-
-
-def read_data():
-    labels = pd.DataFrame(json.loads((ROOT/'labels.json').read_text()))
-    folds = pd.read_csv(ROOT/'sample_folds.csv')
-    return labels, folds
+from PIL import Image,ImageOps
+from matplotlib.patches import Rectangle
+from soilcv.artifacts import write_json
+from soilcv.curves import TARGET_COLUMNS,align_samples,make_submission
+from soilcv.metrics import summarize_cv,emd_per_sample
+from .experiments import ROOT,RECIPES,verify_completed
 
 
 def collect_results():
-    labels, folds = read_data()
-    status = json.loads((ROOT/'status.json').read_text())
-    if status['failed'] or any(job['state'] != 'complete' for job in status['jobs']):
-        raise RuntimeError('Wait for all CNN jobs to complete before writing the final table.')
-    output = ROOT/'results'
-    output.mkdir(exist_ok=True)
-    tables, groups, checkpoints = [], [], []
-    oof_predictions = {}
+    metadata=json.loads((ROOT/'metadata.json').read_text());run_id=metadata['run_id']
+    status=json.loads((ROOT/'status.json').read_text())
+    if status['failed'] or len(status['jobs'])!=4*len(RECIPES) or any(j['state']!='complete' for j in status['jobs']):
+        raise RuntimeError('Wait for every MIL fold to finish.')
+    labels=pd.read_json(ROOT/'labels.json');template=pd.read_json(ROOT/'template.json')
+    folds=pd.read_csv(ROOT/'sample_folds.csv');output=ROOT/'results';output.mkdir(exist_ok=True)
+    tables=[];checkpoints=[];predictions={};cameras=[]
     for recipe in RECIPES:
-        name = recipe['id']
-        fold_predictions, fold_results, test_predictions = [], [], []
+        name=recipe['id'];oof=[];test=[];results=[]
         for fold in range(4):
-            folder = ROOT/'runs'/name/f'fold_{fold}'
-            fold_predictions.append(pd.read_csv(folder/'oof.csv'))
-            fold_results.append(json.loads((folder/'result.json').read_text()))
-            test_predictions.append(pd.read_csv(folder/'test_predictions.csv'))
-            config = json.loads((folder/'config.json').read_text())
-            if config['versions']['source'] != file_hash(Path(__file__).with_name('experiments.py')):
-                raise ValueError('A result uses a different CNN source file.')
-            checkpoints.append({'experiment':name,'fold':fold,'wandb_run':fold_results[-1]['run_url'],
-                                'artifact':fold_results[-1]['checkpoint_artifact']})
-        predictions = pd.concat(fold_predictions,ignore_index=True)
-        scores = summarize_cv(labels,predictions,folds)
-        oof_predictions[name] = predictions
-        predictions.to_csv(output/f'{name}_oof.csv',index=False)
-        jobs = [job for job in status['jobs'] if job['experiment']==name]
-        tables.append({'experiment':name, 'arch':recipe['arch'],'optimizer':recipe['optimizer'],
-                       'frozen_encoder':recipe['frozen'],'frozen_bn':recipe['freeze_bn'],
-                       'augmentation':recipe['augmentation'],'schedule':recipe['schedule'],'pixels':recipe['pixels'],
-                       'cv_emd':scores['emd'],'fold_std':scores['fold_std'],
-                       'gpu_hours':sum(job['finished']-job['started'] for job in jobs)/3600,
-                       'train_val_gpu_hours':sum(r['gpu_hours'] for r in fold_results),
-                       'peak_gpu_mb':max(r['peak_gpu_memory_mb'] for r in fold_results),
-                       'epochs_per_fold':','.join(str(r['epochs_ran']) for r in fold_results),
+            folder=ROOT/'runs'/name/f'fold_{fold}'
+            result=json.loads((folder/'result.json').read_text())
+            if result['run_id']!=run_id:raise ValueError('Mixed run IDs.')
+            verify_completed(folder,result['recipe_hash'])
+            results.append(result);oof.append(pd.read_csv(folder/'oof.csv'))
+            test.append(pd.read_csv(folder/'test_predictions.csv'))
+            camera=pd.read_csv(folder/'camera_predictions.csv');camera['experiment']=name;cameras.append(camera)
+            checkpoints.append({'experiment':name,'fold':fold,'run_id':run_id,'wandb_run':result['run_url'],'artifact':result['checkpoint_artifact']})
+        oof=pd.concat(oof,ignore_index=True);predictions[name]=oof
+        scores=summarize_cv(labels,oof,folds)
+        oof.to_csv(output/f'{name}_oof.csv',index=False)
+        tables.append({'experiment':name,'run_id':run_id,'arch':recipe['arch'],'pixels':recipe['pixels'],
+                       'frozen':recipe['frozen'],'schedule':recipe['schedule'],'cv_emd':scores['emd'],'fold_std':scores['fold_std'],
+                       'gpu_hours':sum(r['gpu_hours'] for r in results),
+                       'peak_gpu_mb':max(r['peak_gpu_memory_mb'] for r in results),
+                       'epochs_per_fold':','.join(str(r['epochs_ran']) for r in results),
                        'public_lb':'not submitted','private_lb':'not available'})
-        errors = group_errors(labels,predictions)
-        errors.insert(0,'experiment',name)
-        groups.append(errors)
-        template = pd.DataFrame(json.loads((ROOT/'template.json').read_text()))
-        aligned = [align_samples(template,pred)[list(TARGET_COLUMNS)].to_numpy() for pred in test_predictions]
-        test_mean = template.copy()
-        test_mean[list(TARGET_COLUMNS)] = np.mean(aligned,axis=0)
-        make_submission(test_mean,template,output/f'{name}_submission.csv')
-    # Same split and scoring for the two image-free references.
-    y=labels[list(TARGET_COLUMNS)].to_numpy()
-    fold_ids=folds.set_index('sample_id').loc[labels.sample_id,'fold'].to_numpy()
-    reference_rows=[]
-    for name in ['train_mean','train_median']:
-        pred=np.zeros_like(y)
-        for fold in range(4):
-            train=y[fold_ids != fold]
-            pred[fold_ids == fold]=train.mean(axis=0) if name=='train_mean' else np.median(train,axis=0)
-        frame=labels[['sample_id']].copy(); frame[list(TARGET_COLUMNS)]=pred;frame['fold']=fold_ids
-        scores=summarize_cv(labels,frame,folds)
-        reference_rows.append({'baseline':name,'cv_emd':scores['emd'],'fold_std':scores['fold_std']})
+        submit=template.copy()
+        submit[list(TARGET_COLUMNS)]=np.mean([align_samples(template,p)[list(TARGET_COLUMNS)].to_numpy() for p in test],axis=0)
+        make_submission(submit,template,output/f'{name}_submission.csv')
     table=pd.DataFrame(tables).sort_values('cv_emd').reset_index(drop=True)
     table.to_csv(output/'cnn_results.csv',index=False)
-    pd.concat(groups,ignore_index=True).to_csv(output/'cnn_group_errors.csv',index=False)
     pd.DataFrame(checkpoints).to_csv(output/'cnn_checkpoints.csv',index=False)
-    pd.DataFrame(reference_rows).to_csv(output/'image_free_baselines.csv',index=False)
-    best=table.iloc[0].experiment
-    make_submission(pd.read_csv(output/f'{best}_submission.csv'),template,output/'cnn_submission.csv')
-    write_json(output/'selection.json',{'selected_experiment':best,'selection_rule':'lowest sample-level four-fold OOF EMD',
-                'cv_emd':float(table.iloc[0].cv_emd),'test_prediction':'mean of four fold models',
-                'note':'OOF evaluates individual held-out fold models, not this four-model test ensemble.',
-                'leaderboard_submission_made':False})
-    return table, pd.DataFrame(reference_rows), oof_predictions
+    camera=pd.concat(cameras,ignore_index=True);camera.to_csv(output/'camera_oof.csv',index=False)
+    camera_summary,camera_pairs=compare_cameras(labels,camera)
+    camera_summary.to_csv(output/'camera_summary.csv',index=False);camera_pairs.to_csv(output/'camera_pairs.csv',index=False)
+    y=labels[list(TARGET_COLUMNS)].to_numpy();baseline='mil-r18-288'
+    baseline_errors=emd_per_sample(y,align_samples(labels,predictions[baseline])[list(TARGET_COLUMNS)].to_numpy())
+    pairs=[]
+    for name,p in predictions.items():
+        errors=emd_per_sample(y,align_samples(labels,p)[list(TARGET_COLUMNS)].to_numpy())
+        for sample,a,b in zip(labels.sample_id,baseline_errors,errors):
+            pairs.append({'experiment':name,'sample_id':sample,'reference':baseline,'reference_emd':a,'emd':b,'delta_emd':b-a})
+    pd.DataFrame(pairs).to_csv(output/'paired_sample_errors.csv',index=False)
+    best=table.iloc[0]
+    make_submission(pd.read_csv(output/f'{best.experiment}_submission.csv'),template,output/'cnn_submission.csv')
+    write_json(output/'selection.json',{'run_id':run_id,'selected_experiment':best.experiment,'cv_emd':float(best.cv_emd),
+          'selection_rule':'lowest sample-mean OOF EMD','test_prediction':'mean of four fold curves','competition_submission_made':False})
+    write_report(table,camera_summary,metadata)
+    return table,predictions,camera_summary
 
 
-def plot_scores(table, baselines):
-    fig,ax=plt.subplots(figsize=(10,4))
-    order=table.sort_values('cv_emd',ascending=False)
-    ax.barh(order.experiment,order.cv_emd,xerr=order.fold_std,color='#39789c',capsize=3)
-    for row in baselines.itertuples(index=False):
-        ax.axvline(row.cv_emd,linestyle='--',label=row.baseline)
-    ax.set(xlabel='Sample-mean EMD (lower is better)',title='Four fixed sample folds; bars show fold standard deviation')
-    ax.legend()
-    fig.tight_layout()
-    return fig
+def compare_cameras(labels,camera):
+    pairs=[]
+    targets=labels.set_index('sample_id')[list(TARGET_COLUMNS)]
+    for (name,sample),group in camera.groupby(['experiment','sample_id']):
+        motorola=group[group.device.str.contains('motorola',case=False,na=False)]
+        samsung=group[group.device.str.contains('samsung',case=False,na=False)]
+        if len(motorola)!=1 or len(samsung)!=1:continue
+        a=motorola[list(TARGET_COLUMNS)].to_numpy();b=samsung[list(TARGET_COLUMNS)].to_numpy()
+        y=targets.loc[[sample]].to_numpy()
+        pairs.append({'experiment':name,'sample_id':sample,'fold':int(group.fold.iloc[0]),
+                      'motorola_emd':float(emd_per_sample(y,a)[0]),'samsung_emd':float(emd_per_sample(y,b)[0]),
+                      'camera_disagreement':float(emd_per_sample(a,b)[0])})
+    frame=pd.DataFrame(pairs,columns=['experiment','sample_id','fold','motorola_emd','samsung_emd','camera_disagreement'])
+    summary=frame.groupby('experiment').agg(paired_samples=('sample_id','size'),motorola_emd=('motorola_emd','mean'),
+                samsung_emd=('samsung_emd','mean'),camera_disagreement=('camera_disagreement','mean')).reset_index()
+    return summary,frame
+
+
+def plot_scores(table):
+    fig,ax=plt.subplots(figsize=(9,3.6));order=table.sort_values('cv_emd',ascending=False)
+    ax.barh(order.experiment,order.cv_emd,xerr=order.fold_std,capsize=3)
+    ax.set(xlabel='Sample EMD (lower is better)',title='MIL: four fixed folds; error bars are fold std')
+    fig.tight_layout();return fig
 
 
 def plot_learning():
-    names=['cnn-r18-frozen','cnn-r18-adamw','cnn-convnext-tiny']
-    fig,axes=plt.subplots(1,3,figsize=(12,3.6))
-    for ax,name in zip(axes,names):
+    fig,axes=plt.subplots(1,2,figsize=(11,3.5))
+    for name,ax in zip(['mil-r18-288','mil-convnext-288'],axes):
         for fold in range(4):
-            history=json.loads((ROOT/'runs'/name/f'fold_{fold}'/'history.json').read_text())
-            ax.plot([row['epoch']+1 for row in history],[row['val']['emd'] for row in history],label=f'fold {fold}')
-        ax.set(title=name,xlabel='Epoch',ylabel='Validation sample EMD')
-        ax.legend(fontsize=8)
-    fig.tight_layout()
-    return fig
+            h=json.loads((ROOT/'runs'/name/f'fold_{fold}'/'history.json').read_text())
+            ax.plot([r['epoch']+1 for r in h],[r['val']['emd'] for r in h],label=f'fold {fold}')
+        ax.set(title=name,xlabel='Epoch',ylabel='Validation sample EMD');ax.legend()
+    fig.tight_layout();return fig
 
 
-def plot_failures(best_name, predictions):
-    labels,_=read_data()
-    pred=align_samples(labels,predictions)[list(TARGET_COLUMNS)].to_numpy()
-    y=labels[list(TARGET_COLUMNS)].to_numpy()
-    error=emd_per_sample(y,pred)
-    worst=np.argsort(error)[-4:][::-1]
-    manifest=pd.DataFrame(json.loads((ROOT/'tiles.json').read_text()))
-    fig,axes=plt.subplots(4,2,figsize=(10,9))
-    for pair,index in zip(axes,worst):
-        sample=labels.loc[index,'sample_id']
-        path=manifest.query('sample_id == @sample and tile_id == 1').iloc[0].tile_path
-        with Image.open(CACHE/path) as image:pair[0].imshow(image)
-        pair[0].set_title(sample);pair[0].axis('off')
-        pair[1].semilogx(SIEVE_MM,y[index],marker='o',label='true')
-        pair[1].semilogx(SIEVE_MM,pred[index],marker='o',label='OOF CNN')
-        pair[1].set(title=f'EMD {error[index]:.2f}',xlabel='Size (mm)',ylabel='Passing (%)',ylim=(-2,103))
-        pair[1].legend(fontsize=8)
-    fig.suptitle(best_name+' | four largest OOF errors')
-    fig.tight_layout()
-    return fig
+def plot_coverage():
+    metadata=json.loads((ROOT/'metadata.json').read_text())
+    manifest=pd.read_json(ROOT/'tiles_288.json');photo=manifest.photo.iloc[0]
+    rows=manifest[manifest.photo.eq(photo)];first=rows.iloc[0]
+    with Image.open(Path(metadata['data_root'])/first.image_path) as raw:image=ImageOps.exif_transpose(raw).convert('RGB')
+    fig,ax=plt.subplots(figsize=(10,5));ax.imshow(image)
+    for row in rows.itertuples():
+        ax.add_patch(Rectangle((row.left,row.top),row.crop_px,row.crop_px,fill=False,edgecolor='lime',linewidth=1))
+    ax.set_title(f'{photo}: all native pixels covered; {len(rows)} tiles');ax.axis('off')
+    fig.tight_layout();return fig
 
 
-def hypothesis_outcomes(table):
-    score=table.set_index('experiment').cv_emd
-    checks=[('H-CNN-01','Frozen image model vs median baseline',score['cnn-r18-frozen']<85.213),
-            ('H-CNN-02','Fine-tuning vs frozen encoder',score['cnn-r18-adamw']<score['cnn-r18-frozen']),
-            ('H-CNN-03','AdamW recipe vs SGD recipe',score['cnn-r18-adamw']<score['cnn-r18-sgd']),
-            ('H-CNN-04','Frozen BN vs updated BN',score['cnn-r18-adamw']<score['cnn-r18-train-bn']),
-            ('H-CNN-05','Light augmentation vs none',score['cnn-r18-adamw']<score['cnn-r18-no-aug']),
-            ('H-CNN-06','Warmup/cosine recipe vs constant LR',score['cnn-r18-adamw']<score['cnn-r18-constant-lr']),
-            ('H-CNN-07','288 px vs 224 px',score['cnn-r18-adamw']<score['cnn-r18-224']),
-            ('H-CNN-08','ConvNeXt vs tuned ResNet',score['cnn-convnext-tiny']<score['cnn-r18-adamw'])]
-    return pd.DataFrame([{'hypothesis':h,'comparison':label,'CV_order_matches_prediction':bool(ok)} for h,label,ok in checks])
-
-
-def write_report(table, baselines):
-    output=ROOT/'results'
+def write_report(table,cameras,metadata):
     best=table.iloc[0]
-    reference=baselines.set_index('baseline').loc['train_median','cv_emd']
-    lines=['# Part 1: CNNs','',
-           f"Best fixed-fold OOF score: {best.cv_emd:.3f} +/- {best.fold_std:.3f} EMD with `{best.experiment}`.",
-           f"The image-free median baseline is {reference:.3f}. Lower is better.",'',
-           'We use 24 soil samples and the original four group folds. No sample is in both train and validation.',
-           'Each T4 runs a separate fold. Input tiles are 64 mm using estimated PPM. Three views per photo are cached at 288 px.',
-           'Validation means tiles per photo, then photos per sample. Training uses equal expected sample/photo/tile weight.','',
-           'Hypotheses were committed before training: `804c059`. The smoke test is separate from the CV table.','',
-           '| Experiment | CV EMD | Fold std | GPU-hours (job slots) | Peak GPU MB | Epochs per fold |',
-           '| --- | ---: | ---: | ---: | ---: | --- |']
-    for row in table.itertuples(index=False):
-        lines.append(f'| {row.experiment} | {row.cv_emd:.3f} | {row.fold_std:.3f} | {row.gpu_hours:.3f} | {row.peak_gpu_mb:.0f} | {row.epochs_per_fold} |')
-    lines += ['', 'GPU-hours above include each worker slot from process start to finish, including checkpoint/log work.',
-              '`train_val_gpu_hours` in the CSV measures the shared fit function only. Peak memory is per selected GPU, not the sum of two cards.','',
-              '## What the comparisons mean','',
-              'CNN filters reuse local texture patterns. This can help with a small dataset. A local tile can miss large stones or the full mix.',
-              'The surface image does not directly measure the full mass distribution. Fine grains can be smaller than a pixel.',
-              'A larger model can overfit. Pretrained BatchNorm statistics may help when tile batches contain related views.','',
-              'AdamW and SGD use different learning rates and weight decay. That comparison tests two optimizer recipes.',
-              'The schedule comparison changes both warmup and cosine decay. It does not isolate warmup alone.',
-              'The 224 px run uses the same physical crop as the 288 px run. It changes model resolution, not the requested area.','',
-              '## Hypothesis checks','',
-              '| Hypothesis | Comparison | Expected CV order observed? |','| --- | --- | --- |']
-    for row in hypothesis_outcomes(table).itertuples(index=False):
-        lines.append(f'| {row.hypothesis} | {row.comparison} | {"yes" if row.CV_order_matches_prediction else "no"} |')
-    lines += ['', 'These are observed CV order checks, not significance tests. The optimizer-speed prediction needs the learning curves too.',
-              'We keep all planned runs, including worse results. Eight recipes on 24 samples can overfit the validation choice.',
-              'The four-fold standard deviation is not a confidence interval. Small score gaps need more checks.','',
-              '## Checkpoints and inference','',
-              'Every fold has its config, environment, OOF curves, best/last checkpoint, inference weights, test curves, and W&B model artifact.',
-              'See `cnn_checkpoints.csv` for exact W&B artifact handles and run links.',
-              'Use `python -m soilcv.cnn.inference` with photos, one supplied PPM per photo, and model directories containing config.json and weights.pt.',
-              'The model can be rebuilt without downloading ImageNet weights. Use the matching soilcv/cnn/experiments.py source version.','',
-              '## Submission status','',
-              '`cnn_submission.csv` is ready. It averages test curves from the four fold models of the selected recipe.',
-              'CV evaluates one held-out fold model per sample. It is not a CV estimate of that four-model test ensemble.',
-              'No competition submission was made. Public LB is not submitted; private LB is not available.',
-              'No test labels or test-specific rules were used to select the model.','',
-              'AI helped write and run this code. Read the source and results before the defense.']
-    lines += ['', '## Observed outcomes', ''] + ['- '+line for line in interpret_results(table)]
-    path=output/'cnn_report.md'
-    path.write_text('\n'.join(lines)+'\n')
-    return path
-
-
-def interpret_results(table):
-    s=table.set_index('experiment').cv_emd
-    lines=[
-        f"Frozen ResNet EMD is {s['cnn-r18-frozen']:.3f}; tuned ResNet EMD is {s['cnn-r18-adamw']:.3f}. " +
-        ('Tuning helps here, but the gain is small.' if s['cnn-r18-adamw']<s['cnn-r18-frozen'] else 'Tuning does not help here. Few samples can make fine-tuning overfit.'),
-        f"AdamW recipe: {s['cnn-r18-adamw']:.3f}; SGD recipe: {s['cnn-r18-sgd']:.3f}. The score gap does not isolate optimizer choice or prove learning speed.",
-        f"Frozen BN stats: {s['cnn-r18-adamw']:.3f}; updated BN stats: {s['cnn-r18-train-bn']:.3f}. " +
-        ('This fits the concern about running statistics from related tile batches.' if s['cnn-r18-adamw']<s['cnn-r18-train-bn'] else 'The expected BN ranking did not hold. This split does not show a benefit from frozen statistics.'),
-        f"Light augmentation: {s['cnn-r18-adamw']:.3f}; no augmentation: {s['cnn-r18-no-aug']:.3f}. " +
-        ('Light augmentation helps in this recipe.' if s['cnn-r18-adamw']<s['cnn-r18-no-aug'] else 'The expected gain did not hold. Some colour changes may remove useful cues; this run does not test each transform alone.'),
-        f"Warmup/cosine: {s['cnn-r18-adamw']:.3f}; constant LR: {s['cnn-r18-constant-lr']:.3f}. " +
-        ('The schedule prediction was wrong. A full LR from the start works better in this short run; many best checkpoints are early.' if s['cnn-r18-constant-lr']<s['cnn-r18-adamw'] else 'The schedule recipe helps here. Warmup alone was not isolated.'),
-        f"288 px: {s['cnn-r18-adamw']:.3f}; 224 px: {s['cnn-r18-224']:.3f}. Compare this gap with fold variation before claiming that more pixels help.",
-        f"ConvNeXt-Tiny: {s['cnn-convnext-tiny']:.3f}; matched ResNet recipe: {s['cnn-r18-adamw']:.3f}. " +
-        ('The stronger model improves this matched recipe, but uses more compute.' if s['cnn-convnext-tiny']<s['cnn-r18-adamw'] else 'The expected architecture gain did not hold. More capacity and different pretrained features do not ensure a gain on 18 train samples per fold.'),
-    ]
-    return lines
+    text=['# CNN MIL results','',f"Run ID: `{metadata['run_id']}`.",
+          f"Code hash: `{metadata['identity']['soilcv']['source_hash']}`.",
+          f"Hypotheses commit: `{metadata['identity']['hypotheses_commit']}`.",
+          'Exact data and grid hashes are in metadata.json. Numbers below come from results/cnn_results.csv.','',
+          f'Best OOF EMD: {best.cv_emd:.3f}. Fold standard deviation: {best.fold_std:.3f}. Recipe: {best.experiment}.','',
+          '| Recipe | EMD | Fold std | Fit GPU-hours | Peak MB |','| --- | ---: | ---: | ---: | ---: |']
+    for r in table.itertuples():text.append(f'| {r.experiment} | {r.cv_emd:.3f} | {r.fold_std:.3f} | {r.gpu_hours:.3f} | {r.peak_gpu_mb:.0f} |')
+    score=table.set_index('experiment').cv_emd
+    text+=['','## What happened','',
+       f"Frozen encoder: {score['mil-r18-frozen-288']:.3f}; tuned ResNet: {score['mil-r18-288']:.3f}.",
+       f"Direct 224 px: {score['mil-r18-224']:.3f}; direct 288 px: {score['mil-r18-288']:.3f}.",
+       f"Constant LR: {score['mil-r18-288']:.3f}; warmup/cosine: {score['mil-r18-cosine']:.3f}.",
+       f"ConvNeXt: {score['mil-convnext-288']:.3f}. More capacity does not promise a better score.",
+       'See paired_sample_errors.csv for changes on each of the same 24 samples. Small score gaps need care.','',
+       'All photos have 100% rectangle coverage at both resolutions. This means no source area is skipped.',
+       'Resizing still loses fine detail. PPM is still based on the no-crop assumption.',
+       'All tiles are in each bag. Area weights avoid counting overlapping edges too often. Each photo has equal sample weight.',
+       'The head receives pooled features. One sample curve receives one EMD loss.','',
+       '## Camera check','',
+       '| Recipe | Paired samples | Motorola EMD | Samsung EMD | Disagreement |',
+       '| --- | ---: | ---: | ---: | ---: |']
+    for r in cameras.itertuples():text.append(f'| {r.experiment} | {r.paired_samples} | {r.motorola_emd:.3f} | {r.samsung_emd:.3f} | {r.camera_disagreement:.3f} |')
+    text+=['','Camera errors use the same paired held-out samples. Disagreement is EMD between device curves, not label error.',
+           'Camera and view can both change. This check does not measure transfer to iPhone.','',
+           '## Limits','',
+           'The old tile-loss study is historical. Coverage, pooling, update count and budget also changed. This is not a loss-only ablation.',
+           'We still select the best epoch on six validation samples. This can make CV optimistic. A TODO in code keeps the later robustness work.',
+           'There is no new split search or seed search. Fold std is not a confidence interval.',
+           'Each fold saves a reload test on one test sample. It must reproduce its saved AMP curve within 0.001 percentage points.',
+           'The submission averages four fold models. OOF evaluates one held-out model per sample.',
+           'Public LB: not submitted. Private LB: not available. No competition submission is sent.',
+           'AI helped write this code. Read it before the defense.']
+    path=ROOT/'CNN_RESULTS.md';path.write_text('\n'.join(text)+'\n');return path

@@ -71,7 +71,7 @@ def launch():
         save_status(jobs,failed)
     if failed:
         raise RuntimeError('A CNN worker failed. Read part1_cnn/logs for the error.')
-    print('All 32 CNN fold jobs are complete.',flush=True)
+    print('All',len(jobs),'MIL fold jobs are complete.',flush=True)
 
 
 def interrupted(signum, frame):

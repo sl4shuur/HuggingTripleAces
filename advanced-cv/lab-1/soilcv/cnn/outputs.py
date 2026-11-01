@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import shutil
 
-from .experiments import ROOT
+from .experiments import ROOT,RECIPES
 from soilcv.artifacts import file_hash, package_identity, save_environment, write_json
 
 
@@ -32,8 +32,8 @@ def save_source():
 
 def export_outputs():
     status = json.loads((ROOT/'status.json').read_text())
-    if status['failed'] or len(status['jobs'])!=32 or any(j['state']!='complete' for j in status['jobs']):
-        raise RuntimeError('Export needs all 32 successful CV jobs.')
+    if status['failed'] or len(status['jobs'])!=4*len(RECIPES) or any(j['state']!='complete' for j in status['jobs']):
+        raise RuntimeError('Export needs all planned successful MIL jobs.')
     save_source()
     for job in status['jobs']:
         folder = ROOT/'runs'/job['experiment']/f"fold_{job['fold']}"
