@@ -212,3 +212,25 @@ augmentation. Select one best epoch by validation EMD, with no camera gate or
 optional epoch ensemble. This differs from Part 2's epoch ensemble and must be
 stated in comparisons. Adaptation uses a fixed budget, not validation labels.
 Do not call the lightweight adaptation a reproduction of full DINOv3 training.
+
+## Observed results: Part 3 SSL
+
+Reviewed on 2026-11-08 from completed Kaggle version 8 and five public receipts.
+The pre-run hypotheses above are unchanged. Full tables and evidence are in
+[PART3_RESULTS.md](PART3_RESULTS.md) and [part3_results.json](part3_results.json).
+
+- H-SSL-01: DINOv3 wins frozen Ridge (48.752 vs 54.913), while MAE wins full FT
+  (31.493 vs 32.766). Frozen rankings do not predict tuned rankings here.
+- H-SSL-02: LP-FT has higher CKA, but not consistently better EMD or lower fold
+  variance. After adaptation, LP-FT (33.239) is worse than frozen-encoder LP
+  (32.789), despite CKA 0.999284. Preservation is not a quality guarantee.
+- H-SSL-03: adaptation costs 0.485 GPU h and gives small LP/full FT CV gains
+  (-0.241/-0.278), while k-NN, Ridge and LP-FT worsen. No general benefit.
+- H-SSL-04: prediction failed: CLS-only Ridge (45.383) beats CLS+patch (48.752).
+- H-SSL-05: layer decay .75 beats uniform LR, 32.803 vs 33.828.
+- H-SSL-06: the expected jitter benefit was not seen: no color jitter scores
+  32.689 vs 32.803. This small difference needs repeats for a robustness claim.
+
+The best CV recipe is mae-lpft; the best of five submitted SSL public scores is
+61.47339 for dinov3-lpft-no-color. None beats earlier Swin tiles frozen public
+EMD 45.21894. Do not change model selection to follow this tiny public set.

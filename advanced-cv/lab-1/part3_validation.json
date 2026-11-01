@@ -45,9 +45,12 @@
   },
   "full_study": {
     "url": "https://www.kaggle.com/code/denysmykhailov/soil-ssl-part-3-dinov3-mae",
-    "version": 7,
-    "status": "fresh_logging_v2_ready_user_launch",
-    "execution_type": "SAVE_AND_RUN_ALL"
+    "version": 8,
+    "status": "complete",
+    "execution_type": "SAVE_AND_RUN_ALL",
+    "study_id": "43e79cea8f5be6e997fc98c1152549298c8a4cf37b7ac9e8b00c7f5339462697",
+    "results_report": "PART3_RESULTS.md",
+    "verified_public_submissions": 5
   },
   "git_history_unchanged": true,
   "logging_update": {

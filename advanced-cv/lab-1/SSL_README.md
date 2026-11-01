@@ -1,5 +1,9 @@
 # Part 3 — DINOv3 + MAE
 
+Completed version-8 results, five verified public submissions and the remaining
+assignment gaps are documented in [PART3_RESULTS.md](PART3_RESULTS.md).
+[part3_results.json](part3_results.json) preserves the supporting numeric records.
+
 Run **[ssl.ipynb](ssl.ipynb)** for the complete study. The notebook explains the
 protocol and displays the score matrix, paired adaptation changes, CKA and
 training curves. Computation lives in `soilcv/ssl/`.
