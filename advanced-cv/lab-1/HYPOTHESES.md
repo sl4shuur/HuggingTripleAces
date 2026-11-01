@@ -1,4 +1,6 @@
-# Hypotheses before the MIL run
+# Hypotheses
+
+## Hypotheses before the MIL run
 
 This run uses full-coverage sample-level MIL. Only MIL checkpoints are supported by inference.
 
@@ -22,7 +24,7 @@ Budget: 16 epochs, early stop after 5 epochs without improvement. Two complete s
 
 Hypotheses stay separate from scores. Each run writes CNN_RESULTS.md and cnn_results.csv with a run ID and code/data hashes. The main numeric source is that run's CSV. No leaderboard submission is sent.
 
-# Part 2 hypotheses before training
+## Part 2 hypotheses before training
 
 Keep the same four saved sample folds and seed 42 + fold. Do not train CNNs again.
 Use full photos at 2 estimated pixels/mm for every camera. Keep the aspect ratio.
@@ -71,7 +73,7 @@ Save each recipe's complete OOF curves and a true four-fold test ensemble.
 Do not rank camera diagnostic runs as ordinary CV recipes. Keep earlier outputs.
 No automatic competition submissions or W&B CV-summary runs are planned.
 
-# Part 2 revision: local detail and global context
+## Part 2 revision: local detail and global context
 
 This plan replaces the full-photo-only input and Pareto checkpoint rule above.
 Keep the old plan and all earlier results as a record. Do not retrain CNNs.
@@ -113,3 +115,23 @@ Use a fresh output folder for this revision. Keep the three candidate weight
 files; full optimizer snapshots are temporary while a fold is training.
 No notebooks or datasets are published in this revision. Smoke tests are short,
 offline for W&B, and use only a small part of the data.
+
+## Observed results: full-photo v10
+
+The completed full-photo study and its five public submissions are recorded in
+[VIT_RESULTS_FULL_PHOTO_V10.md](VIT_RESULTS_FULL_PHOTO_V10.md).
+These results do not belong to the later multiscale revision.
+
+Pretrained Swin beat the submitted scratch ViTs on OOF and public EMD. This fits
+the prediction that pretraining helps on few independent soils. It does not
+isolate pretraining alone, since the architectures also differ.
+
+Full Swin tuning had the best OOF EMD. Frozen Swin had the best public EMD,
+47.37640. Camera disagreement did not rank these public results correctly.
+The public set is small, so this does not prove why the rankings changed.
+The proposed benefit of warmup was not supported by the scratch OOF ranking:
+no warmup scored better, while patch 16 with warmup scored better on public LB.
+There is no clean, stable win for warmup in this study.
+
+The new local-detail inputs and EMD-only stopping remain separate experiments.
+Do not treat these earlier public scores as results of those changes.
