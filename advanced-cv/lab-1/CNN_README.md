@@ -1,46 +1,42 @@
-# Part 1 on Kaggle
+# Part 1: full-coverage CNN MIL
 
-Use `cnn.ipynb` and the `denysmykhailov/soil-cv-utils` code dataset.
-The CNN source is in `soilcv/cnn/`. There are no helper scripts next to the notebook.
+Use cnn.ipynb, the soil competition data, and the latest soil-cv-utils dataset.
+Select two T4 GPUs, Internet, and the WANDB_API_KEY secret. Then Save & Run All.
+The existing secret binding is reused. W&B entity is public-team. There are no CV-summary or online smoke runs.
 
-1. Attach the soil competition data and code dataset version 3.
-2. Select GPU T4 x2 and turn Internet on.
-3. Add `WANDB_API_KEY` in Kaggle Secrets and allow notebook access.
-4. Import `cnn.ipynb`, then choose Save Version → Save & Run All.
+One bag is one whole sample, with every photo and every grid tile. No tiles are sampled out.
+The encoder runs in chunks of 8 tiles with gradient checkpointing. It pools features before the curve head.
+One sample curve receives one EMD loss. Two sample losses make one optimizer update.
+BN statistics stay frozen. All five recipes use 16 epochs at most, with patience 5.
+The 224 and 288 recipes use the same native crop rectangles. Each cache uses one LANCZOS resize from the original.
 
-The notebook waits for all 32 fold jobs. Each GPU trains one fold at a time.
-Each fold runs test inference on GPU. Seeds are fixed, but GPU math is not fully
-deterministic, so scores can change on another run. Failed jobs stop the notebook and keep logs.
-W&B tracks training, validation, compute, and model artifacts in
-`public-team/soil-grain-size`. It creates no CV-summary runs.
+Coverage is checked by exact rectangle union, per photo. coverage_224.csv and coverage_288.csv must show 100% and zero missing pixels.
+Overlap-corrected area weights avoid over-counting edges. Photos have equal sample weight.
+This does not promise lossless resizing or prove the absolute physical scale.
 
-Kaggle saves these files from `/kaggle/working` after a successful run:
+Outputs in /kaggle/working:
 
-- `submission.csv`: the selected recipe, averaged over four fold models.
-- `part1_cnn/`: the full study, including all checkpoints, inference weights,
-  tables, plots, report, configs, logs, and a source/environment copy.
+- submission.csv: the selected recipe's four-fold mean prediction. No competition upload is sent.
+- part1_mil/: weights, best/last checkpoints, OOF, camera curves, configs, logs, coverage, paired errors and hashes.
+- part1_mil/CNN_RESULTS.md: current-run report, generated from results/cnn_results.csv.
+- part1_mil/source/: code, pre-run hypotheses and environment with pyproject.toml, uv.lock and actual runtime versions.
 
-Each fold folder has `best.pt`, `last.pt`, and `weights.pt`.
-`part1_cnn/output_manifest.json` lists all study files and their hashes.
-The code saves no API keys in these files. It does not submit to the competition.
+HYPOTHESES.md contains pre-run predictions. CNN_RESULTS.md has the current run's numbers.
+Only the MIL pipeline is supported by the inference notebook.
 
-To use the saved environment, download the study folder and run
-`uv sync --project part1_cnn/source/environment` with a compatible CUDA setup.
-The runtime versions and installed package list are saved there too.
-The lock is a reproduction recipe; the Kaggle image may have other installed dependencies.
-
-To predict from photos after downloading the study folder:
+Every real fold reloads weights through the public inference path and checks one complete test sample.
+The same AMP setting must reproduce test_predictions.csv within 0.001 percentage points.
+Standalone inference reads tile size, grid, resolution, normalization and pooling from the saved config.
 
 ```bash
-PYTHONPATH=part1_cnn/source python -m soilcv.cnn.inference \
+PYTHONPATH=part1_mil/source python -m soilcv.cnn.inference \
   --photo photo.jpg --ppm 4.6 \
-  --checkpoint-dir part1_cnn/runs/cnn-r18-constant-lr/fold_0 \
+  --checkpoint-dir part1_mil/runs/mil-r18-288/fold_0 \
   --device cuda:0 --output prediction.csv
 ```
 
-Use the actual PPM for each photo. For the full ensemble, pass all four fold folders.
-The selected recipe is saved in `part1_cnn/results/selection.json`.
-No old EDA results were removed. The earlier local CNN study was archived before this refactor.
+Supply the actual PPM. Use all four selected fold folders for the submission ensemble.
 
-To build a new code dataset version, run `python package_soilcv.py`.
-Upload the resulting ZIP as a new version of `soil-cv-utils`, then update the input version in Kaggle.
+The paired camera check reuses held-out features. Both camera label errors use the same paired samples.
+Prediction disagreement is not label error. Camera and view can both change; this is not an iPhone test.
+Best-epoch selection stays. A code TODO records EMA/fixed-epoch and extra-split checks for later.

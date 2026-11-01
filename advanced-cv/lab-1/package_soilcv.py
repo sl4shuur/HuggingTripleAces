@@ -24,6 +24,9 @@ def build_bundle(destination):
                 archive.write(path, "soilcv/" + str(path.relative_to(root)))
         archive.write(project / "pyproject.toml", "pyproject.toml")
         archive.write(project / "HYPOTHESES.md", "HYPOTHESES.md")
+        for path in sorted((project / "inference").rglob("*")):
+            if path.is_file() and path.suffix in {".py", ".md"}:
+                archive.write(path, str(path.relative_to(project)))
         archive.writestr("release.json", json.dumps(release, indent=2) + "\n")
     return destination
 

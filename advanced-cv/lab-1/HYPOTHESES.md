@@ -1,6 +1,6 @@
 # Hypotheses before the MIL run
 
-The old tile-loss study is a reference. Its notebooks, results and checkpoints stay in the earlier Kaggle notebook versions and code dataset version 3. Local history is in archive/CNN_TILE_HISTORY.md. Its scores are not scores of the new MIL run.
+This run uses full-coverage sample-level MIL. Only MIL checkpoints are supported by inference.
 
 Use the same four sample folds. Every photo of a sample stays in one fold.
 One training item is one complete soil sample. Use all grid tiles of all its photos in train, validation and test. Do not randomly drop tiles or photos.
