@@ -173,3 +173,42 @@ The new camera-only checks have small positive or negative domain gaps. They
 do not prove iPhone transfer. Neither low disagreement nor good OOF guarantees
 a good public score. Layer decay, weight decay, stochastic depth and augmentation
 remain recipe settings without isolated ablations.
+
+## Part 3: SSL transfer and fold-local domain adaptation
+
+Pre-run plan, 2026-11-07. These are predictions, not measured results.
+Use the unchanged four sample folds and official DINOv3 ViT-S/16 + MAE ViT-B/16
+weights. No additional labelled data. Adapt DINOv3 separately on each fold's
+training photos only; validation and test images never enter SSL training.
+Use all 64 mm grid tiles, directly resized from native crops to 224 pixels,
+overlap-corrected tile areas, equal photo weights and one loss per soil.
+
+- H-SSL-01: DINOv3 frozen ridge will beat MAE frozen ridge. MAE may improve more
+  with full tuning, so the frozen-feature ranking need not predict FT ranking.
+- H-SSL-02: LP-FT will be more stable than a randomly initialized head with full
+  FT on 18 training soils. Expect smaller feature distortion (higher held-out
+  tile CKA), but higher CKA alone is not evidence of a better predictor.
+- H-SSL-03: ten fixed epochs of DINO-style adaptation with an EMA teacher,
+  centering and sharpening may improve ridge / LP, but can overfit or collapse.
+  Report the complete before/after matrix, adaptation loss, entropy, feature
+  variation, CKA and the extra GPU cost even if adaptation hurts.
+- H-SSL-04: CLS + mean patch descriptors will outperform CLS alone for local
+  texture. Exclude DINOv3 register tokens from patch pooling. Test a CLS-only
+  frozen-ridge ablation on the same folds.
+- H-SSL-05: layer-wise LR decay (0.75) will preserve useful early features better
+  than uniform backbone LR. Compare DINOv3 LP-FT with decay 0.75 vs 1.0.
+- H-SSL-06: mild brightness/contrast changes may help camera transfer. Compare
+  DINOv3 LP-FT with and without photometric jitter; retain exact 90-degree
+  rotations and flips in both. Random resized crops / zoom without adjusting
+  PPM, arbitrary resizes, strong blur, MixUp and CutMix can destroy grain-size
+  evidence or break the whole-soil target and are excluded.
+
+Frozen ridge uses train-only standardization and fixed alpha=100; weighted
+cosine k-NN uses k=3 and temperature=.07. No tuning on public LB. LP trains a
+linear mass-bin head with EMD, LP-FT starts from that fold's best LP head,
+and full FT starts from the same pretrained/adapted encoder and a fresh head.
+LP uses cached deterministic features; FT uses all tiles and scale-preserving
+augmentation. Select one best epoch by validation EMD, with no camera gate or
+optional epoch ensemble. This differs from Part 2's epoch ensemble and must be
+stated in comparisons. Adaptation uses a fixed budget, not validation labels.
+Do not call the lightweight adaptation a reproduction of full DINOv3 training.

@@ -14,6 +14,7 @@ dependencies = ["numpy>=1.26", "pandas>=2.2", "Pillow>=10"]
 train = ["torch>=2.3", "torchvision>=0.18"]
 tracking = ["wandb>=0.25.1"]
 test = ["pytest>=8"]
+ssl = ["transformers==4.57.1", "scikit-learn>=1.5", "matplotlib>=3.9"]
 
 [tool.setuptools.packages.find]
 where = ["."]

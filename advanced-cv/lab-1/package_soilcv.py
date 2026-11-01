@@ -31,6 +31,8 @@ def build_bundle(destination):
             }:
                 archive.write(path, "soilcv/" + str(path.relative_to(root)))
         archive.write(project / "pyproject.toml", "pyproject.toml")
+        if (project / "uv.lock").is_file():
+            archive.write(project / "uv.lock", "uv.lock")
         archive.write(project / "HYPOTHESES.md", "HYPOTHESES.md")
         archive.writestr("release.json", json.dumps(release, indent=2) + "\n")
     return destination

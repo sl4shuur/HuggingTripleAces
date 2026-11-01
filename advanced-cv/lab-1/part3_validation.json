@@ -1,0 +1,68 @@
+{
+  "source": {
+    "version": "0.1.1",
+    "source_hash": "a0f454b611922f0263eb8208da87bdad972d41daf449f66f93fb7655a953cfad",
+    "folds_hash": "057fe8f93ba35d2ab7a3483063c95ca0079c4bcbb9978671c16ffc4119d9c1b2"
+  },
+  "local_tests": {
+    "passed": 89,
+    "command": "python -m pytest tests -q"
+  },
+  "gpu_smoke": {
+    "url": "https://www.kaggle.com/code/denysmykhailov/soil-ssl-part-3-gpu-smoke",
+    "version": 2,
+    "gpu": "2 x Tesla T4",
+    "status": "complete",
+    "updates": {
+      "part3_smoke/dinov3/full/history.json": {
+        "optimizer_steps": 4,
+        "skipped_steps": 0
+      },
+      "part3_smoke/dinov3/lp/history.json": {
+        "optimizer_steps": 2,
+        "skipped_steps": 0
+      },
+      "part3_smoke/dinov3/lpft/history.json": {
+        "optimizer_steps": 4,
+        "skipped_steps": 0
+      },
+      "part3_smoke/mae/full/history.json": {
+        "optimizer_steps": 4,
+        "skipped_steps": 0
+      },
+      "part3_smoke/mae/lp/history.json": {
+        "optimizer_steps": 2,
+        "skipped_steps": 0
+      },
+      "part3_smoke/mae/lpft/history.json": {
+        "optimizer_steps": 4,
+        "skipped_steps": 0
+      }
+    },
+    "peak_mae_memory_mb": 4216,
+    "protocol": "four labelled soils and one test soil; two LP/FT epochs; one DINO-style adaptation epoch; reload parity. These are integration checks, not CV experiments.",
+    "source_hash": "a0f454b611922f0263eb8208da87bdad972d41daf449f66f93fb7655a953cfad"
+  },
+  "full_study": {
+    "url": "https://www.kaggle.com/code/denysmykhailov/soil-ssl-part-3-dinov3-mae",
+    "version": 7,
+    "status": "fresh_logging_v2_ready_user_launch",
+    "execution_type": "SAVE_AND_RUN_ALL"
+  },
+  "git_history_unchanged": true,
+  "logging_update": {
+    "source": {
+      "version": "0.1.1",
+      "source_hash": "7fb12eaa31b8d2e189265fe58b5805379d2a3b742dcfeb00df70f77dd3adffdb",
+      "folds_hash": "057fe8f93ba35d2ab7a3483063c95ca0079c4bcbb9978671c16ffc4119d9c1b2"
+    },
+    "local_tests_passed": 90,
+    "schema": "one recipe/fold per run; common train/*, val/*, best/*, selected/*; epoch x-axis",
+    "output_root": "/kaggle/working/part3_ssl_v2",
+    "gpu_training_restarted": false,
+    "previous_session_status": "CANCEL_ACKNOWLEDGED",
+    "kaggle_notebook_version": 7,
+    "saved_without_running": true,
+    "bundle_source_verified": true
+  }
+}
