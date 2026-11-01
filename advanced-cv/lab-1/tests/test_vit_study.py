@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from soilcv.artifacts import file_hash, identity_hash, package_identity, write_json
+from soilcv.checkpoints import write_candidate_index
 from soilcv.curves import TARGET_COLUMNS
 from soilcv.vit.analysis import collect_results
 
@@ -26,7 +27,7 @@ def study(tmp_path, monkeypatch):
 
     tmp_path = tmp_path / "study"
     tmp_path.mkdir()
-    recipe = {"id": "test-vit", "arch": "scratch_vit"}
+    recipe = {"id": "test-vit", "arch": "scratch_vit", "view_mode": "multiscale"}
     monkeypatch.setattr(experiments, "DOMAIN_BASELINE", recipe["id"])
     metadata = {"run_id": "study-1", "identity": {"soilcv": package_identity()}}
     write_json(tmp_path / "metadata.json", metadata)
@@ -69,15 +70,55 @@ def study(tmp_path, monkeypatch):
                 [{"epoch": 0, "val": {"emd": 10, "camera_disagreement": 20}}],
             )
             for name in (
-                "weights.pt",
-                "best.pt",
-                "last.pt",
                 "config.json",
                 "compute.json",
                 "inference_check.json",
+                "padding_diagnostic.json",
+                "checkpoint_summary.json",
+                "padding_pairs.csv",
             ):
                 (folder / name).write_text("fixture")
-            names = [path.name for path in folder.iterdir()]
+            padding_emd = 0.01 * (fold + 1)
+            write_json(
+                folder / "padding_diagnostic.json",
+                {
+                    "padding_samples": 1,
+                    "padding_max_emd": padding_emd,
+                    "padding_mean_emd": padding_emd,
+                    "padding_extra_pixels": 16,
+                },
+            )
+            pd.DataFrame(
+                {"sample_id": [heldout[0]], "padding_emd": [padding_emd]}
+            ).to_csv(folder / "padding_pairs.csv", index=False)
+            records = []
+            (folder / "candidates").mkdir()
+            for rank, epoch in enumerate((3, 2, 1)):
+                weights = folder / "candidates" / f"epoch_{epoch:04d}.pt"
+                weights.write_text(f"fixture weights {epoch}")
+                predictions = folder / "candidates" / f"epoch_{epoch:04d}_oof.csv"
+                candidate_oof = curves(heldout, 21 + 2 * rank + fold)
+                candidate_oof.to_csv(predictions, index=False)
+                if rank == 0:
+                    candidate_oof["fold"] = fold
+                    candidate_oof.to_csv(folder / "best_only_oof.csv", index=False)
+                records.append(
+                    {
+                        "epoch": epoch,
+                        "emd": 5 * (1 + 2 * rank + fold),
+                        "camera_disagreement": 20 if rank < 2 else 25,
+                        "weights": str(weights.relative_to(folder)),
+                        "weights_sha256": file_hash(weights),
+                        "predictions": str(predictions.relative_to(folder)),
+                        "predictions_sha256": file_hash(predictions),
+                    }
+                )
+            write_candidate_index(folder, records, 3)
+            names = [
+                str(path.relative_to(folder))
+                for path in folder.rglob("*")
+                if path.is_file()
+            ]
             write_json(
                 folder / "artifact_hashes.json",
                 {name: file_hash(folder / name) for name in names},
@@ -102,6 +143,9 @@ def study(tmp_path, monkeypatch):
                     "peak_gpu_memory_mb": 100,
                     "epochs_ran": 4,
                     "best_epoch": 3,
+                    "best_emd": 5 * (1 + fold),
+                    "selected_epochs": [3, 2],
+                    "selected_checkpoint_count": 2,
                     "run_url": f"https://wandb.test/{run_name}/{fold}",
                     "checkpoint_artifact": f"public-team/test/{run_name}-fold-{fold}:v0",
                 },
@@ -113,6 +157,14 @@ def test_study_report_scores_oof_and_averages_complete_four_fold_test(study):
     root, recipes = study
     table, predictions, domain = collect_results(root, recipes)
     assert table.cv_emd.iloc[0] == pytest.approx(17.5)
+    assert table.best_only_cv_emd.iloc[0] == pytest.approx(12.5)
+    assert table.selected_checkpoints_per_fold.iloc[0] == "2,2,2,2"
+    assert table.padding_max_emd.iloc[0] == pytest.approx(0.04)
+    assert table.padding_samples.iloc[0] == 4
+    padding = pd.read_csv(root / "results" / "padding_checks.csv")
+    assert padding.fold.tolist() == [0, 1, 2, 3]
+    assert padding.checked_samples.tolist() == ["soil-0", "soil-2", "soil-4", "soil-6"]
+    assert "## Padding check" in (root / "VIT_RESULTS.md").read_text()
     assert len(predictions["test-vit"]) == 8
     assert table.camera_disagreement.iloc[0] == pytest.approx(20)
     assert table.gpu_hours.iloc[0] == pytest.approx(0.04)
@@ -186,8 +238,59 @@ def test_failed_export_does_not_publish_top_level_submission(study, monkeypatch)
     root, recipes = study
     collect_results(root, recipes)
     export = export_fixture(root, recipes, monkeypatch)
-    (root / "runs" / "test-vit" / "fold_0" / "weights.pt").write_text("changed")
-    with pytest.raises(ValueError, match="changed run artifact"):
+    (root / "runs" / "test-vit" / "fold_0" / "candidates" / "epoch_0003.pt").write_text(
+        "changed"
+    )
+    with pytest.raises(ValueError, match="changed candidate"):
         export()
     assert not (root.parent / "submission.csv").exists()
     assert not (root / "outputs.json").exists()
+
+
+def test_study_rejects_missing_selected_candidate_weight(study):
+    root, recipes = study
+    (root / "runs" / "test-vit" / "fold_0" / "candidates" / "epoch_0002.pt").unlink()
+    with pytest.raises(ValueError, match="candidate file"):
+        collect_results(root, recipes)
+
+
+def test_epoch_curve_average_aligns_sample_and_camera_ids():
+    from soilcv.vit.experiments import mean_curves
+
+    first = curves(["sample-a", "sample-b"], 20)
+    second = curves(["sample-b", "sample-a"], 30)
+    result = mean_curves([first, second])
+    assert result.sample_id.tolist() == ["sample-a", "sample-b"]
+    np.testing.assert_allclose(result[list(TARGET_COLUMNS)].iloc[:, :-1], 25)
+    second.loc[0, "sample_id"] = "wrong-sample"
+    with pytest.raises(ValueError, match="different sample"):
+        mean_curves([first, second])
+
+
+def test_swin_tile_comparison_changes_schedule_without_changing_local_scale():
+    from soilcv.vit.experiments import TILE_RECIPES
+
+    frozen, constant, cosine = TILE_RECIPES
+    assert frozen["tuning"] == "frozen"
+    for recipe in TILE_RECIPES:
+        assert recipe["view_mode"] == "tiles"
+        assert recipe["tile_mm"] == 64
+        assert recipe["pixels"] == 288
+        assert recipe["selection"] == "emd"
+        assert recipe["keep_top_k"] == 3
+    difference = {key for key in constant if constant[key] != cosine[key]}
+    assert difference == {"id", "schedule", "warmup"}
+
+
+def test_padding_check_rejects_a_training_sample(study):
+    from soilcv.vit.analysis import read_padding_check
+
+    root, _ = study
+    folder = root / "runs" / "test-vit" / "fold_0"
+    pairs = pd.read_csv(folder / "padding_pairs.csv")
+    pairs.loc[0, "sample_id"] = "soil-2"
+    pairs.to_csv(folder / "padding_pairs.csv", index=False)
+    with pytest.raises(ValueError, match="held-out samples"):
+        read_padding_check(
+            folder, "test-vit", 0, pd.read_csv(root / "sample_folds.csv")
+        )
