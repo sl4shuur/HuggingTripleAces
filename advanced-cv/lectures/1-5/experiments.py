@@ -9,7 +9,7 @@
 
 Finished runs (those with `results/runs/<name>.json`) are skipped, so the launcher can be stopped and restarted.
 The MoCo v3 run of Lecture 4 (the same ViT-Ti/8, the same data and budget) is imported as a reference if
-`../Lecture_4/results` and `../Lecture_4/logdirs` are available.
+`../1-4/results` and `../1-4/logdirs` are available.
 """
 import argparse
 import glob
@@ -71,7 +71,7 @@ add("ijepa_random_mask", "ijepa", "ijepa", method_kwargs=dict(mask="random"))   
 
 GROUPS = list(dict.fromkeys(group for group, _ in EXPERIMENTS.values()))
 REFERENCE = "mocov3_vit_tiny"                           # run of Lecture 4
-LECTURE_4 = os.path.join("..", "Lecture_4")
+LECTURE_4 = os.path.join("..", "1-4")
 
 
 def smoke_config(cfg):

@@ -21,7 +21,7 @@ from lecture_utils import ImageFiles, STL10_CLASSES, get_device, load_flickr30k,
 from vision_language import (DualEncoder, PretrainedText, TextTransformer, retrieval_metrics, zero_shot_accuracy,
                              zero_shot_weights)
 
-LECTURE_5_DINO = os.path.join("..", "Lecture_5", "logdirs", "dino", "encoder.pt")
+LECTURE_5_DINO = os.path.join("..", "1-5", "logdirs", "dino", "encoder.pt")
 
 # name: (timm checkpoint or "lecture5", pretrained, input size)
 IMAGE_TOWERS = {
