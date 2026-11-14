@@ -1,0 +1,48 @@
+{
+ "name": "aug_simclr_crop_05",
+ "method": "simclr",
+ "backbone": "resnet18",
+ "backbone_params_m": 11.17,
+ "train_images": 100000,
+ "epochs": 30,
+ "batch_size": 512,
+ "minutes": 9.5,
+ "diverged": false,
+ "final_loss": 2.391054195012802,
+ "linear_acc": 0.7593750357627869,
+ "knn_acc": 0.7290000319480896,
+ "knn_acc_z": 0.7017500400543213,
+ "rankme_h": 287.81356200466297,
+ "rankme_z": 112.48124641113029,
+ "std_h": 0.729925811290741,
+ "std_z": 0.9981423020362854,
+ "alignment": 0.30684494972229004,
+ "uniformity": -3.817474842071533,
+ "config": {
+  "name": "aug_simclr_crop_05",
+  "method": "simclr",
+  "method_kwargs": {
+   "temperature": 0.2
+  },
+  "backbone": "resnet18",
+  "aug": {
+   "crop_scale": [
+    0.5,
+    1.0
+   ]
+  },
+  "train_split": "unlabeled",
+  "subset": null,
+  "epochs": 30,
+  "batch_size": 512,
+  "optimizer": "sgd",
+  "base_lr": 0.24,
+  "weight_decay": 0.0005,
+  "warmup_epochs": 10,
+  "freeze_patch_embed": false,
+  "eval_every": 1,
+  "log_every": 20,
+  "artifacts": false,
+  "seed": 95431
+ }
+}

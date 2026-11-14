@@ -1,0 +1,38 @@
+{
+ "name": "dino_no_multicrop",
+ "method": "dino",
+ "encoder_params_m": 5.38,
+ "train_images": 100000,
+ "epochs": 30,
+ "batch_size": 512,
+ "minutes": 12.8,
+ "diverged": false,
+ "final_loss": 2.914614733671531,
+ "linear_acc": 0.6260000467300415,
+ "knn_acc": 0.5607500076293945,
+ "knn_acc_student": 0.5723749995231628,
+ "rankme_h": 54.96970049270272,
+ "std_h": 0.7139126062393188,
+ "config": {
+  "name": "dino_no_multicrop",
+  "method": "dino",
+  "method_kwargs": {
+   "ema": 0.99,
+   "teacher_temp": 0.04
+  },
+  "views": {
+   "n_local": 0
+  },
+  "train_split": "unlabeled",
+  "epochs": 30,
+  "batch_size": 512,
+  "base_lr": 0.0005,
+  "weight_decay": 0.05,
+  "warmup_epochs": 10,
+  "grad_clip": 3.0,
+  "eval_every": 1,
+  "log_every": 20,
+  "artifacts": false,
+  "seed": 95431
+ }
+}

@@ -1,0 +1,44 @@
+{
+ "name": "ijepa_random_mask",
+ "method": "ijepa",
+ "encoder_params_m": 5.38,
+ "train_images": 100000,
+ "epochs": 30,
+ "batch_size": 512,
+ "minutes": 5.3,
+ "diverged": false,
+ "final_loss": 0.09027215613004488,
+ "linear_acc": 0.5681250095367432,
+ "knn_acc": 0.4853750169277191,
+ "knn_acc_student": 0.484250009059906,
+ "rankme_h": 82.1948800365242,
+ "std_h": 0.7466070055961609,
+ "config": {
+  "name": "ijepa_random_mask",
+  "method": "ijepa",
+  "method_kwargs": {
+   "ema": 0.99,
+   "mask": "random"
+  },
+  "views": {
+   "crop_scale": [
+    0.3,
+    1.0
+   ],
+   "jitter_p": 0.0,
+   "gray_p": 0.0,
+   "blur_p": 0.0
+  },
+  "train_split": "unlabeled",
+  "epochs": 30,
+  "batch_size": 512,
+  "base_lr": 0.0005,
+  "weight_decay": 0.05,
+  "warmup_epochs": 10,
+  "grad_clip": 3.0,
+  "eval_every": 1,
+  "log_every": 20,
+  "artifacts": false,
+  "seed": 95431
+ }
+}

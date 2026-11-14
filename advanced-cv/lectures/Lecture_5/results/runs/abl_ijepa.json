@@ -1,0 +1,43 @@
+{
+ "name": "abl_ijepa",
+ "method": "ijepa",
+ "encoder_params_m": 5.38,
+ "train_images": 100000,
+ "epochs": 30,
+ "batch_size": 512,
+ "minutes": 6.4,
+ "diverged": false,
+ "final_loss": 0.08952886074399337,
+ "linear_acc": 0.5483750104904175,
+ "knn_acc": 0.4958750307559967,
+ "knn_acc_student": 0.5021250247955322,
+ "rankme_h": 65.90501596980167,
+ "std_h": 0.8816537857055664,
+ "config": {
+  "name": "abl_ijepa",
+  "method": "ijepa",
+  "method_kwargs": {
+   "ema": 0.99
+  },
+  "views": {
+   "crop_scale": [
+    0.3,
+    1.0
+   ],
+   "jitter_p": 0.0,
+   "gray_p": 0.0,
+   "blur_p": 0.0
+  },
+  "train_split": "unlabeled",
+  "epochs": 30,
+  "batch_size": 512,
+  "base_lr": 0.0005,
+  "weight_decay": 0.05,
+  "warmup_epochs": 10,
+  "grad_clip": 3.0,
+  "eval_every": 1,
+  "log_every": 20,
+  "artifacts": false,
+  "seed": 95431
+ }
+}

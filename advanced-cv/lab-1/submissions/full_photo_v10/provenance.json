@@ -1,0 +1,263 @@
+{
+  "code_dataset_version": 10,
+  "selection": "lowest standard OOF EMD among six previous ViT/Swin recipes; domain diagnostics excluded",
+  "predictions": "saved four-fold test ensembles from notebook version 2 Outputs",
+  "submitted": false,
+  "files": [
+    {
+      "rank": 1,
+      "experiment": "swin-full",
+      "oof_emd": 37.75175527831711,
+      "fold_std": 20.21450228611565,
+      "file": "01_swin-full_4fold.csv",
+      "sha256": "9e6b286f2ff1f6fbf29dfb57a066450fe8cd8fff5ebc268277616f24298f6c18",
+      "notebook": "https://www.kaggle.com/code/denysmykhailov/soil-grain-size-pretrained-swin-t?version=2",
+      "study_run_id": "20261101T170501Z-a596a117ff",
+      "checkpoints": [
+        {
+          "experiment": "swin-full",
+          "fold": 0,
+          "run_id": "20261101T170501Z-a596a117ff",
+          "wandb_run": "https://wandb.ai/public-team/soil-grain-size/runs/gj1ysdzc",
+          "artifact": "public-team/soil-grain-size/swin-full-fold-0:v0"
+        },
+        {
+          "experiment": "swin-full",
+          "fold": 1,
+          "run_id": "20261101T170501Z-a596a117ff",
+          "wandb_run": "https://wandb.ai/public-team/soil-grain-size/runs/n0htzapi",
+          "artifact": "public-team/soil-grain-size/swin-full-fold-1:v0"
+        },
+        {
+          "experiment": "swin-full",
+          "fold": 2,
+          "run_id": "20261101T170501Z-a596a117ff",
+          "wandb_run": "https://wandb.ai/public-team/soil-grain-size/runs/6cthdmcy",
+          "artifact": "public-team/soil-grain-size/swin-full-fold-2:v0"
+        },
+        {
+          "experiment": "swin-full",
+          "fold": 3,
+          "run_id": "20261101T170501Z-a596a117ff",
+          "wandb_run": "https://wandb.ai/public-team/soil-grain-size/runs/vv5mrvvi",
+          "artifact": "public-team/soil-grain-size/swin-full-fold-3:v0"
+        }
+      ],
+      "submission": {
+        "ref": "57882716",
+        "file_name": "submissions/submission_01_swin-full-4fold.csv",
+        "description": "",
+        "status": "SubmissionStatus.COMPLETE",
+        "date": "2026-11-01 20:06:47.877000",
+        "public_score": "57.66586",
+        "private_score": "",
+        "inference_file_sha256": "39ac393cd0414808bad0425b4d61dff242cc30ed0f0c8592aa41981fe8569d08",
+        "inference_device": "cpu"
+      }
+    },
+    {
+      "rank": 2,
+      "experiment": "swin-last-stage",
+      "oof_emd": 38.219895042672135,
+      "fold_std": 19.386174920809054,
+      "file": "02_swin-last-stage_4fold.csv",
+      "sha256": "b448dd5fa97e8a3ab175b9b5bb917e27603e425648cf1523f10f0bd3866d8520",
+      "notebook": "https://www.kaggle.com/code/denysmykhailov/soil-grain-size-pretrained-swin-t?version=2",
+      "study_run_id": "20261101T170501Z-a596a117ff",
+      "checkpoints": [
+        {
+          "experiment": "swin-last-stage",
+          "fold": 0,
+          "run_id": "20261101T170501Z-a596a117ff",
+          "wandb_run": "https://wandb.ai/public-team/soil-grain-size/runs/vtr9gp4q",
+          "artifact": "public-team/soil-grain-size/swin-last-stage-fold-0:v0"
+        },
+        {
+          "experiment": "swin-last-stage",
+          "fold": 1,
+          "run_id": "20261101T170501Z-a596a117ff",
+          "wandb_run": "https://wandb.ai/public-team/soil-grain-size/runs/5b45dqgk",
+          "artifact": "public-team/soil-grain-size/swin-last-stage-fold-1:v0"
+        },
+        {
+          "experiment": "swin-last-stage",
+          "fold": 2,
+          "run_id": "20261101T170501Z-a596a117ff",
+          "wandb_run": "https://wandb.ai/public-team/soil-grain-size/runs/jkj9zkgt",
+          "artifact": "public-team/soil-grain-size/swin-last-stage-fold-2:v0"
+        },
+        {
+          "experiment": "swin-last-stage",
+          "fold": 3,
+          "run_id": "20261101T170501Z-a596a117ff",
+          "wandb_run": "https://wandb.ai/public-team/soil-grain-size/runs/f5mnt4m0",
+          "artifact": "public-team/soil-grain-size/swin-last-stage-fold-3:v0"
+        }
+      ],
+      "submission": {
+        "ref": "57882730",
+        "file_name": "submissions/submission_02_swin-last-stage-4fold.csv",
+        "description": "",
+        "status": "SubmissionStatus.COMPLETE",
+        "date": "2026-11-01 20:07:19.413000",
+        "public_score": "52.80828",
+        "private_score": "",
+        "inference_file_sha256": "b5d172d433af784d46b5837bc60a07a9f2e5ce8901fe2401b0aa7f8ce120f0fa",
+        "inference_device": "cpu"
+      }
+    },
+    {
+      "rank": 3,
+      "experiment": "swin-frozen",
+      "oof_emd": 42.483055657441966,
+      "fold_std": 21.349094738342533,
+      "file": "03_swin-frozen_4fold.csv",
+      "sha256": "2fbb8293854574413a8806962ca2d44653f04ce73ce6b2a664db96fa9c1f8e76",
+      "notebook": "https://www.kaggle.com/code/denysmykhailov/soil-grain-size-pretrained-swin-t?version=2",
+      "study_run_id": "20261101T170501Z-a596a117ff",
+      "checkpoints": [
+        {
+          "experiment": "swin-frozen",
+          "fold": 0,
+          "run_id": "20261101T170501Z-a596a117ff",
+          "wandb_run": "https://wandb.ai/public-team/soil-grain-size/runs/wk3h7l2p",
+          "artifact": "public-team/soil-grain-size/swin-frozen-fold-0:v0"
+        },
+        {
+          "experiment": "swin-frozen",
+          "fold": 1,
+          "run_id": "20261101T170501Z-a596a117ff",
+          "wandb_run": "https://wandb.ai/public-team/soil-grain-size/runs/mif7ucw7",
+          "artifact": "public-team/soil-grain-size/swin-frozen-fold-1:v0"
+        },
+        {
+          "experiment": "swin-frozen",
+          "fold": 2,
+          "run_id": "20261101T170501Z-a596a117ff",
+          "wandb_run": "https://wandb.ai/public-team/soil-grain-size/runs/ohdncies",
+          "artifact": "public-team/soil-grain-size/swin-frozen-fold-2:v0"
+        },
+        {
+          "experiment": "swin-frozen",
+          "fold": 3,
+          "run_id": "20261101T170501Z-a596a117ff",
+          "wandb_run": "https://wandb.ai/public-team/soil-grain-size/runs/3w5s9tom",
+          "artifact": "public-team/soil-grain-size/swin-frozen-fold-3:v0"
+        }
+      ],
+      "submission": {
+        "ref": "57882825",
+        "file_name": "submissions/submission_03_swin-frozen-4fold.csv",
+        "description": "",
+        "status": "SubmissionStatus.COMPLETE",
+        "date": "2026-11-01 20:13:17.673000",
+        "public_score": "47.37640",
+        "private_score": "",
+        "inference_file_sha256": "79eec8066229dfbf227e382d8faf6b120930e72c34bbf833ebca02595efc3952",
+        "inference_device": "cpu"
+      }
+    },
+    {
+      "rank": 4,
+      "experiment": "vit-scratch-no-warmup",
+      "oof_emd": 79.17321154333074,
+      "fold_std": 15.6863785788485,
+      "file": "04_vit-scratch-no-warmup_4fold.csv",
+      "sha256": "7c3c7d33a8047e124af5ce9affbaaa12a87f13422ac7330809ee243064c3ac0c",
+      "notebook": "https://www.kaggle.com/code/denysmykhailov/soil-grain-size-vit-from-scratch?version=2",
+      "study_run_id": "20261101T170306Z-eeb6d8f69e",
+      "checkpoints": [
+        {
+          "experiment": "vit-scratch-no-warmup",
+          "fold": 0,
+          "run_id": "20261101T170306Z-eeb6d8f69e",
+          "wandb_run": "https://wandb.ai/public-team/soil-grain-size/runs/2x9k8e6k",
+          "artifact": "public-team/soil-grain-size/vit-scratch-no-warmup-fold-0:v0"
+        },
+        {
+          "experiment": "vit-scratch-no-warmup",
+          "fold": 1,
+          "run_id": "20261101T170306Z-eeb6d8f69e",
+          "wandb_run": "https://wandb.ai/public-team/soil-grain-size/runs/pxtk3748",
+          "artifact": "public-team/soil-grain-size/vit-scratch-no-warmup-fold-1:v0"
+        },
+        {
+          "experiment": "vit-scratch-no-warmup",
+          "fold": 2,
+          "run_id": "20261101T170306Z-eeb6d8f69e",
+          "wandb_run": "https://wandb.ai/public-team/soil-grain-size/runs/6p853lc1",
+          "artifact": "public-team/soil-grain-size/vit-scratch-no-warmup-fold-2:v0"
+        },
+        {
+          "experiment": "vit-scratch-no-warmup",
+          "fold": 3,
+          "run_id": "20261101T170306Z-eeb6d8f69e",
+          "wandb_run": "https://wandb.ai/public-team/soil-grain-size/runs/wszk7vzs",
+          "artifact": "public-team/soil-grain-size/vit-scratch-no-warmup-fold-3:v0"
+        }
+      ],
+      "submission": {
+        "ref": "57882831",
+        "file_name": "submissions/submission_04_vit-scratch-no-warmup-4fold.csv",
+        "description": "",
+        "status": "SubmissionStatus.COMPLETE",
+        "date": "2026-11-01 20:13:38.097000",
+        "public_score": "89.85861",
+        "private_score": "",
+        "inference_file_sha256": "c0bce9166d9d947a14adcf4c4a3b15a471a1be4c150141795d2ee490be37b041",
+        "inference_device": "cpu"
+      }
+    },
+    {
+      "rank": 5,
+      "experiment": "vit-scratch-p16",
+      "oof_emd": 80.06121432713297,
+      "fold_std": 14.272695701350203,
+      "file": "05_vit-scratch-p16_4fold.csv",
+      "sha256": "bdfea75df506b75c2196044d348dcc4053faa468ab5cab94cc908898a7ac3429",
+      "notebook": "https://www.kaggle.com/code/denysmykhailov/soil-grain-size-vit-from-scratch?version=2",
+      "study_run_id": "20261101T170306Z-eeb6d8f69e",
+      "checkpoints": [
+        {
+          "experiment": "vit-scratch-p16",
+          "fold": 0,
+          "run_id": "20261101T170306Z-eeb6d8f69e",
+          "wandb_run": "https://wandb.ai/public-team/soil-grain-size/runs/qlec8w1l",
+          "artifact": "public-team/soil-grain-size/vit-scratch-p16-fold-0:v0"
+        },
+        {
+          "experiment": "vit-scratch-p16",
+          "fold": 1,
+          "run_id": "20261101T170306Z-eeb6d8f69e",
+          "wandb_run": "https://wandb.ai/public-team/soil-grain-size/runs/e5tin91e",
+          "artifact": "public-team/soil-grain-size/vit-scratch-p16-fold-1:v0"
+        },
+        {
+          "experiment": "vit-scratch-p16",
+          "fold": 2,
+          "run_id": "20261101T170306Z-eeb6d8f69e",
+          "wandb_run": "https://wandb.ai/public-team/soil-grain-size/runs/1gyzgxco",
+          "artifact": "public-team/soil-grain-size/vit-scratch-p16-fold-2:v0"
+        },
+        {
+          "experiment": "vit-scratch-p16",
+          "fold": 3,
+          "run_id": "20261101T170306Z-eeb6d8f69e",
+          "wandb_run": "https://wandb.ai/public-team/soil-grain-size/runs/xiqnz87h",
+          "artifact": "public-team/soil-grain-size/vit-scratch-p16-fold-3:v0"
+        }
+      ],
+      "submission": {
+        "ref": "57882838",
+        "file_name": "submissions/submission_05_vit-scratch-p16-4fold.csv",
+        "description": "",
+        "status": "SubmissionStatus.COMPLETE",
+        "date": "2026-11-01 20:13:55.577000",
+        "public_score": "82.50369",
+        "private_score": "",
+        "inference_file_sha256": "06a9e3c57231cc75098c8acf5650bb1530b852a37b3c6323177a0b95e0257ccd",
+        "inference_device": "cpu"
+      }
+    }
+  ]
+}
