@@ -13,8 +13,8 @@ from alseg.adapters.dinov2 import DinoV2Encoder
 from alseg.adapters.voc import VocImages
 from alseg.cli_common import CONTEXT_SETTINGS, config_option
 from alseg.config import PROJECT_ROOT, load_config
-from alseg.data import find_voc_root, load_manifest
-from alseg.extraction import iter_features
+from alseg.data.voc import find_voc_root, load_manifest
+from alseg.nn.extraction import iter_features
 
 
 @click.command(context_settings=CONTEXT_SETTINGS)

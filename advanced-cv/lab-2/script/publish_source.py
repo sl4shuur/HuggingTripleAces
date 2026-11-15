@@ -38,7 +38,7 @@ def stage_source(project_dir: Path, output_dir: Path, dataset: str, title: str) 
         "README.md",
         "SETUP_PLAN.md",
         "AGENTS.md",
-        "kaggle_setup.ipynb",
+        "kaggle/setup.ipynb",
     ):
         if (project_dir / name).is_file():
             paths.add(project_dir / name)
@@ -177,7 +177,9 @@ def publish_release(api, folder: Path, release: dict, public: bool = False) -> s
     required=True,
     help="Exact destination, e.g. denysmykhailov/alseg-source.",
 )
-@click.option("--title", default="ALSeg Assignment 2 Source", show_default=True)
+@click.option(
+    "--title", default="Active Learning Segmentation Source Code", show_default=True
+)
 @click.option(
     "--project-dir",
     type=click.Path(exists=True, file_okay=False, path_type=Path),

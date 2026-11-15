@@ -38,7 +38,7 @@ class SelectionRequest:
 
     def __post_init__(self) -> None:
         if not isinstance(self.method, AcquisitionMethod):
-            raise ValueError("method must be an AcquisitionMethod enum member")
+            raise TypeError("method must be an AcquisitionMethod enum member")
         check_tensor(self.embeddings, "embeddings", torch.float32, 2)
         n, d = self.embeddings.shape
         if n == 0 or d == 0:

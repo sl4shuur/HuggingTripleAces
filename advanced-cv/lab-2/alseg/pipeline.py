@@ -11,12 +11,12 @@ import torch
 from alseg.adapters.dinov2 import DinoV2Encoder
 from alseg.adapters.voc import VocEvaluation, VocImages, VocOracle
 from alseg.config import PROJECT_ROOT, TrackingConfig, load_config
+from alseg.core.helpers import write_csv
 from alseg.core.pool import PoolManifest
 from alseg.core.predictions import IGNORE_INDEX, NUM_CLASSES
 from alseg.core.selection import AcquisitionMethod
 from alseg.data.preprocessing import resize_mask
 from alseg.data.voc import find_voc_root, load_manifest
-from alseg.helpers.io import write_csv
 from alseg.interfaces.data import ImageSource, Oracle
 from alseg.interfaces.encoder import Encoder
 from alseg.nn.evaluation import evaluate_head

@@ -16,12 +16,11 @@ def check_ids(ids: list[int], name: str) -> None:
 
 def check_tensor(value: Tensor, name: str, dtype: torch.dtype, ndim: int) -> None:
     if not isinstance(value, Tensor):
-        raise ValueError(f"{name} must be a tensor")
+        raise TypeError(f"{name} must be a tensor")
     if value.device.type != "cpu" or value.dtype != dtype or value.ndim != ndim:
         raise ValueError(f"{name} must be a CPU {dtype} tensor with {ndim} dimensions")
     if value.is_floating_point() and not torch.isfinite(value).all():
         raise ValueError(f"{name} must contain only finite values")
-
 
 
 def write_csv(path: Path, rows: list[dict]) -> None:

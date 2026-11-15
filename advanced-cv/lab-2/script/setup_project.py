@@ -9,7 +9,7 @@ import torch
 
 from alseg.cli_common import CONTEXT_SETTINGS, config_option
 from alseg.config import load_config
-from alseg.data import find_voc_root, inspect_voc_samples, load_manifest
+from alseg.data.voc import find_voc_root, inspect_voc_samples, load_manifest
 
 
 @click.command(context_settings=CONTEXT_SETTINGS)
