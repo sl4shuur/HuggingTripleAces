@@ -21,33 +21,34 @@ The first deliverable is the contract and passing checks, not a trained segmenta
 ```text
 advanced-cv/lab-2/
   AGENTS.md               # Persistent project and Kaggle conventions
-  pyproject.toml          # Increase project version before every source release
-  README.md
-  SETUP_PLAN.md
-  kaggle_setup.ipynb       # Launch commands using %run
+  pyproject.toml          # Increase version before every source dataset update
+  cli_common.py           # Shared rich-click settings and options
+  setup_project.py        # Setup entry point
+  run_experiment.py       # Planned: benchmark entry point
+  README.md, SETUP_PLAN.md
+  kaggle_setup.ipynb       # Launch entry-point files using %run
   configs/base.toml
   alseg/
-    core/models.py        # Domain models and invariant checks
-    interfaces.py         # ABC boundaries: Selector.select(request)
-    adapters/
-      voc.py              # VOC filesystem integration
-      acquisition.py      # Planned: person 2's acquisition implementations
-      encoders.py         # Planned: person 1's frozen encoder integrations
-    cli/
-      setup.py            # rich-click environment/data preflight
-      run.py              # Planned: rich-click benchmark entry point
-    testing/fixtures.py   # Shared synthetic inputs
-    pipeline.py           # Planned: person 1's experiment orchestration
-    metrics.py            # Planned: person 1's evaluation functions
+    core/
+      pool.py             # PoolManifest
+      selection.py        # SelectionRequest and output validation
+      predictions.py      # LogitBatch
+      calibration.py      # CalibrationBatch
+      scores.py           # Canonical score alignment
+      helpers.py       # Shared tensor/ID checks
+    interfaces.py         # ABC boundaries
+    data.py               # VOC discovery and file preflight
+    adapters/             # Planned: interface implementation classes only
+    pipeline.py           # Planned: experiment orchestration
+    metrics.py            # Planned: evaluation
   tests/
-    test_contracts.py
-    test_setup.py
-    test_cli.py
-    test_acquisition.py   # Planned: person 2's algorithm sanity checks
-    test_protocol.py      # Planned: person 1's oracle/training/metric checks
+    synthetic.py          # Shared fixtures; outside production core
+    test_contracts.py, test_setup.py, test_cli.py
+    test_acquisition.py   # Planned: algorithm sanity checks
+    test_protocol.py      # Planned: oracle/training/metric checks
 ```
 
-Use one trainer for every acquisition method. Notebooks display results and launch shared code; they must not contain a second benchmark implementation. Keep domain data in dataclasses and define ABCs at component boundaries. Core models do not import CLI/adapters; adapters depend on interfaces and core; the pipeline composes them. Use rich-click for every CLI. Add metrics and model adapters when implemented, without empty placeholder modules.
+Use one trainer for every acquisition method. Notebooks display results and launch shared code; they must not contain a second benchmark implementation. Keep domain data in dataclasses and define ABCs at component boundaries. Core models do not import entry points or adapters. Adapters contain only classes implementing interfaces; standalone data helpers live in `alseg/data.py`. The pipeline composes these components. Use separate rich-click entry-point files sharing `cli_common.py`, without a `cli/` package. Do not create `__init__.py` files; use namespace packages. Add metrics and model adapters when implemented, without empty placeholder modules.
 
 All code, comments, configuration descriptions, and project documentation are written in English.
 
@@ -61,7 +62,7 @@ The supplied dataset mount is:
 /kaggle/input/datasets/gopalbhattrai/pascal-voc-2012-dataset/
 ```
 
-The supplied nested directory is `VOC2012_test/VOC2012_test/`. Keep it as a reference, but require official segmentation train/val lists and masks for the assignment. `alseg.cli.setup` discovers a single complete train/val root under the mount, or validates an explicit `data.voc_root` override. It fails if only test data is available or multiple valid roots are found.
+The supplied nested directory is `VOC2012_test/VOC2012_test/`. Keep it as a reference, but require official segmentation train/val lists and masks for the assignment. `setup_project.py` discovers a single complete train/val root under the mount, or validates an explicit `data.voc_root` override. It fails if only test data is available or multiple valid roots are found.
 
 Use Kaggle's preinstalled PyTorch for the initial contract checks; install rich-click for CLI commands; do not reinstall a different CUDA stack. Record Python, PyTorch, CUDA, GPU, and full installed package versions after a successful setup. Freeze the actual benchmark environment after a GPU smoke run. The initial `pyproject.toml` declares compatibility bounds, not an exact benchmark lockfile; attach the same saved Kaggle environment/dataset/model versions to both teammates' runs.
 
@@ -84,11 +85,13 @@ Acquisition never receives an oracle or a dataset returning hidden masks. Offici
 
 ## 5. Trainer-to-selector contract
 
-`alseg/core/models.py` is the shared source of truth. Boundary tensors are CPU tensors; the acquisition implementation can move computation to a device internally. Requests and their tensor/list contents must not be mutated.
+`alseg/core/selection.py` is the shared source of truth. Boundary tensors are CPU tensors; the acquisition implementation can move computation to a device internally. Requests and their tensor/list contents must not be mutated.
+
+Use `AcquisitionMethod.MAXHERDING` and other enum members in domain code. Parse external strings with `AcquisitionMethod(config_value)` and serialize `.value` to config/results. Synthetic fixtures belong to `tests/synthetic.py`, outside core; the setup notebook loads them using `%run`.
 
 | Field | Format | Meaning |
 | --- | --- | --- |
-| `method` | string | `random`, `uncertainty`, `maxherding`, `uherding` |
+| `method` | AcquisitionMethod | `RANDOM`, `UNCERTAINTY`, `MAXHERDING`, `UHERDING`; string values in config/results |
 | `embeddings` | float32 `[N,D]` | Entire train pool in manifest order, L2-normalized rows |
 | `labeled_ids` | list[int] | All queried IDs in acquisition order |
 | `unlabeled_ids` | list[int] | Complement of L, in increasing canonical ID order |
@@ -101,10 +104,10 @@ Acquisition never receives an oracle or a dataset returning hidden masks. Offici
 Implemented API:
 
 ```python
-from alseg.core.models import SelectionRequest, validate_selection
+from alseg.core.selection import AcquisitionMethod, SelectionRequest, validate_selection
 
 request = SelectionRequest(
-    method=method, embeddings=embeddings,
+    method=AcquisitionMethod.MAXHERDING, embeddings=embeddings,
     labeled_ids=labeled_ids, unlabeled_ids=unlabeled_ids,
     n_select=n_select, seed=seed, uncertainty=uncertainty, sigma=sigma,
 )
@@ -208,11 +211,11 @@ Keep source, config, and tiny fixtures in Git; exclude real data, caches, and ch
 
 Mark reduced-budget/epoch runs as smoke tests and exclude them from benchmark tables. Measure one real round before scheduling all 50 runs. Do not change the recipe per method to fit the available time.
 
-Future runner interface, not implemented at step 0:
+Future runner interface, not implemented at step 0 (`run_script` points to `run_experiment.py`):
 
 ```ipython
-%run -m alseg.cli.run -- --config "$config_path" --encoder encoder_1 --method random
-%run -m alseg.cli.run -- --config "$config_path" --encoder encoder_2 --method uherding
+%run "$run_script" --config "$config_path" --encoder encoder_1 --method random
+%run "$run_script" --config "$config_path" --encoder encoder_2 --method uherding
 ```
 
 Use separate branches for segmentation and acquisition. Any contract change must update its caller, documentation, and fixture together.
