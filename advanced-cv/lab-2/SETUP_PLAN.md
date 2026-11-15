@@ -2,7 +2,7 @@
 
 Person 1 owns data, frozen encoders, segmentation training, evaluation, and the experiment runner. Person 2 owns uncertainty estimation, MaxHerding, UHerding, and adaptive acquisition parameters. Both parts use one contract and one runner so results remain comparable.
 
-Requirements were checked against the local assignment PDF. Settings that are not prescribed by the assignment are proposed team conventions to freeze before the benchmark. Step 0 and the data/oracle portion of step 1 are implemented. A first frozen DINOv2 encoder and image/patch extraction are also implemented. A segmentation head, Lightning training, mIoU, W&B, and a single-budget Random baseline are implemented. The next milestone is cumulative Random rounds and held-out calibration integration.
+Requirements were checked against the local assignment PDF. Settings that are not prescribed by the assignment are proposed team conventions to freeze before the benchmark. Step 0 and the data/oracle portion of step 1 are implemented. A first frozen DINOv2 encoder and image/patch extraction are also implemented. A segmentation head, Lightning training, mIoU, W&B, cumulative Random rounds, and a shared fit/calibration split are implemented. DINO and iBOT ViT-B/16 use pinned ImageNet-1K teacher backbone weights. The next milestone is batch inference and teammate scoring/calibration integration.
 
 ## 1. Agree on the shared protocol
 
@@ -10,7 +10,7 @@ Requirements were checked against the local assignment PDF. Settings that are no
 2. Share one ordered ID manifest, preprocessing specification, and task-model training recipe.
 3. Use `Selector.select(request: SelectionRequest) -> list[int]` from `alseg/interfaces/`.
 4. Follow cumulative budgets `[21, 42, 84, 168, 336, 672]`, with new batches `[21, 21, 42, 84, 168, 336]`.
-5. Use one base seed and independent selection, training, and calibration RNG streams. For round index `r` starting at zero, use `base_seed + stream_offset + r`. Do not include method names in seeds.
+5. Use one base seed and independent selection, training, and calibration RNG streams. For round index `r` starting at zero, selection uses `base_seed + selection_seed_offset + r`; training and calibration use fixed `base_seed + training_seed_offset` and `base_seed + calibration_seed_offset`. Do not include method names in seeds.
 6. Start with an empty labeled set. Uncertainty and UHerding use the same Random cold-start fallback, matching Random's first 21 IDs. MaxHerding selects its own first batch.
 7. Run the same deterministic synthetic fixtures and contract tests before integration.
 
@@ -27,7 +27,7 @@ advanced-cv/lab-2/
   script/extract_features.py # Frozen image-embedding extraction
   script/publish_source.py # Kaggle source create/update entry point
   script/train_segmentation.py # One-budget head training and W&B
-  script/run_experiment.py # Planned: cumulative benchmark entry point
+  script/run_experiment.py # Cumulative Random experiment entry point
   README.md, SETUP_PLAN.md
   kaggle/train.ipynb       # Declarative configuration and training
   kaggle/setup.ipynb       # Optional diagnostics
@@ -48,7 +48,7 @@ advanced-cv/lab-2/
     data/preprocessing.py # Deterministic RGB/mask transforms
     nn/extraction.py      # Image-only batch extraction
     config.py             # Project root and shared TOML loading
-    pipeline.py           # One-budget Random orchestration
+    pipeline.py           # Cumulative Random orchestration and single-budget recipe
     metrics.py            # Dataset-wide mIoU
     nn/                   # Heads, training, extraction and evaluation
     runtime/              # W&B and notebook secret access
@@ -56,7 +56,7 @@ advanced-cv/lab-2/
     synthetic.py          # Shared fixtures; outside production core
     test_contracts.py, test_setup.py, test_cli.py
     test_acquisition.py   # Planned: algorithm sanity checks
-    test_protocol.py      # Planned: oracle/training/metric checks
+    test_protocol.py      # Shared queried-label holdout checks
 ```
 
 Use one trainer for every acquisition method. Notebooks display results and launch shared code; they must not contain a second benchmark implementation. Keep domain data in dataclasses and define ABCs at component boundaries. Core models do not import entry points or adapters. Adapters contain only classes implementing interfaces; standalone data helpers live in `alseg/data/voc.py`. The pipeline composes these components. Use separate rich-click entry-point files sharing `alseg/cli_common.py`, without a `cli/` package. Do not create `__init__.py` files; use namespace packages. Add metrics and model adapters when implemented, without empty placeholder modules.
@@ -157,11 +157,11 @@ The geometry mask must not depend on hidden segmentation labels, including void=
 
 `CalibrationBatch` adds int64 `[B,H,W]` targets from a held-out subset of queried L only. Ignore 255 in ECE; padding targets must be 255. Types validate shapes/values, but the runner remains responsible for ensuring calibration IDs belong to queried L and were excluded from model fitting.
 
-Proposed calibration protocol: deterministically reserve `max(4, floor(0.2 * len(L)))` images from each round's L using canonical IDs and the calibration seed. Fit the head on the remainder. Apply the same split rule to all methods and the full-data upper bound. Reserved images count toward the annotation budget; report `n_fit` and `n_calibration`. Their identities depend on the selected L, while their counts agree across methods.
+Agreed calibration protocol: every reporting head trains from scratch on all queried L, identically for all four methods. Before a model-based query, split the previous L deterministically into fit/calibration using canonical IDs and the fixed calibration seed. Train an auxiliary acquisition head on fit only; choose its temperature by ECE on calibration and compute acquisition uncertainty with that same auxiliary head and temperature. Do not transfer temperature to the reporting head. The teammate notebook already implements the auxiliary fit but still needs this scoring adjustment; its notebook is maintained by the teammate.
 
-Do not refit the head on calibration masks after fitting tau. Fix ECE bins, tau candidates, tie-breaks, and aggregation before benchmark. If no valid calibration pixels exist, use tau=1 and log the fallback. Never calibrate or choose the primary uncertainty method using official val.
+Do not refit the auxiliary acquisition head on calibration masks after fitting tau. Fix ECE bins, tau candidates, tie-breaks, and aggregation before benchmark. If no valid calibration pixels exist, use tau=1 and log the fallback. Never calibrate or choose the primary uncertainty method using official val.
 
-Patch features `[B,C,h,w]` are internal to encoder/head, not selector inputs. Measure their storage requirements before deciding to cache them.
+Patch features `[B,C,h,w]` are internal to encoder/head, not selector inputs. They are cached together with CLS embeddings; see the two-GPU workflow below.
 
 ## 6. One experiment loop
 
@@ -171,12 +171,11 @@ L = []; U = entire pool; model = None
 for target_budget in [21, 42, 84, 168, 336, 672]:
     n_select = target_budget - len(L)
     resolve common Random fallback if the method needs an unavailable model
-    otherwise derive scores/sigma/tau from the current model and queried L
+    otherwise fit/calibrate the auxiliary acquisition head when needed and derive scores/sigma/tau from queried L
     create SelectionRequest; select; validate_selection
     query oracle; update L and U
-    derive fit/calibration subsets inside L
-    create a NEW head and optimizer; keep the encoder frozen and in eval mode
-    train using the fixed recipe without val-based checkpoint selection
+    create a NEW reporting head and optimizer; keep the encoder frozen and in eval mode
+    train on all queried L with the fixed recipe, without val-based checkpoint selection
     evaluate official val; save results and selection history
 ```
 
@@ -184,11 +183,11 @@ Scores for 21 -> 42 come from the model trained at budget 21. The budget-42 row 
 
 Use identical head initialization seeds for the same encoder/round across methods. Reset optimizer, scheduler, and scaler as well as head weights. Keep encoder parameters out of the optimizer and set `requires_grad=False`.
 
-Full-data upper bound is a separate run with the same training/calibration recipe. Required grid: `2 * (4 * 6 + 1) = 50` training runs, 25 per encoder, before ablations/repeats. Identical cold-start runs may share artifacts only when IDs, resolved config, and seeds are identical.
+Full-data upper bound is a separate reporting-head run on the entire official train split; no calibration/acquisition head is needed. The required grid is 2 * (4 * 6 + 1) = 50 reporting-head runs. Model-based methods additionally fit auxiliary acquisition heads.
 
 ## 7. Configuration, artifacts, and metrics
 
-Before benchmarking, freeze the remaining defaults in `alseg/config.py`: encoder checkpoint and immutable revision/checksum, preprocessing, image-vector pooling, head, optimizer, LR, epochs, batch size, augmentations, calibration, uncertainty aggregation, sigma/tau rules, and metric conventions. The first encoder/head recipe is configured and checked; the second encoder and acquisition/calibration choices remain to be frozen.
+Before benchmarking, freeze the remaining defaults in `alseg/config.py`: encoder checkpoint and immutable revision/checksum, preprocessing, image-vector pooling, head, optimizer, LR, epochs, batch size, augmentations, calibration, uncertainty aggregation, sigma/tau rules, and metric conventions. DINO/iBOT ViT-B/16 checkpoints, the head recipe, and the queried-label split are configured and checked; acquisition/scoring and temperature calibration choices remain to be frozen.
 
 Choose two encoders after checking dense feature availability, checkpoint access, licensing, pretraining provenance, absence of VOC fine-tuning, and actual GPU memory. Compare similar model sizes when possible.
 
@@ -204,7 +203,7 @@ runs/<encoder>/<method>/<run_id>/
   per_class_iou.json       # Per-class intersection, union, and IoU
 ```
 
-CSV columns: `run_id, encoder, method, seed, round, budget, n_fit, n_calibration, miou, pixel_accuracy, mean_class_accuracy, selection_seconds, train_seconds, eval_seconds, sigma_used, tau_used, fallback`. Store metrics in `[0,1]`. Save completed rounds atomically; resume restores IDs, oracle state, and config without repeated queries.
+CSV columns: `run_id, encoder, method, seed, round, budget, n_fit, n_calibration, miou, pixel_accuracy, mean_class_accuracy, selection_seconds, train_seconds, eval_seconds, sigma_used, tau_used, fallback`. Store metrics in `[0,1]`. JSON/CSV histories are replaced atomically. Current runs persist L/U and completed-round metrics but do not support process restart/resume; a new invocation requires a fresh output directory. Resume with manifest/config/oracle verification remains a later step.
 
 Sum the confusion matrix over all official val images before computing IoU. Include background, ignore 255, and exclude zero-union classes from the mean while logging their count. Pixel accuracy and mean class accuracy use the same confusion matrix.
 
@@ -227,12 +226,13 @@ Keep source, config, and tiny fixtures in Git; exclude real data, caches, and ch
 
 Mark reduced-budget/epoch runs as smoke tests and exclude them from benchmark tables. Measure one real round before scheduling all 50 runs. Do not change the recipe per method to fit the available time.
 
-Future runner interface, not implemented at step 0 (`run_script` points to `script/run_experiment.py`):
+Current Random runner interface (`run_script` points to `script/run_experiment.py`; choose the encoder in the JSON config):
 
 ```ipython
-%run "$run_script" --config "$config_path" --encoder encoder_1 --method random
-%run "$run_script" --config "$config_path" --encoder encoder_2 --method uherding
+%run "$run_script" --config "$config_path"
 ```
+
+The teammate acquisition methods are not connected yet.
 
 Use separate branches for segmentation and acquisition. Any contract change must update its caller, documentation, and fixture together.
 
@@ -255,7 +255,11 @@ The assignment requires disclosure of AI assistance, including prompts/responses
 
 `TrackingConfig` uses Pydantic Settings with no environment prefix. A local `.env` can contain `WANDB_API_KEY`; on Kaggle enable the same secret in Add-ons > Secrets. `get_secret` detects Kaggle, Colab, or local runtime. Never save the typed `SecretStr` API key in run snapshots. Default entity is exactly `public-team`. Offline/disabled tracking does not request secrets.
 
-`script/train_segmentation.py` currently runs one Random budget, trains all queried L, then reports native-resolution official val metrics. It records `n_fit=budget` and `n_calibration=0`. The proposed calibration split above remains an integration step; do not treat the current entry point as a completed AL benchmark.
+`script/run_experiment.py` runs cumulative Random budgets `[21, 42, 84, 168, 336, 672]` using one manifest, frozen encoder, and Oracle. Round `r` samples only the missing count from canonical U with `seed + selection_seed_offset + r`. Every round initializes a fresh reporting head and AdamW optimizer with fixed `seed + training_seed_offset`. Official val is used only after the fixed training schedule.
+
+The Random runner trains on all queried L (`n_fit=budget`, `n_calibration=0`). The shared `split_labeled_ids` helper is available for auxiliary calibration, with fraction=0.2 and minimum=4. Held-out labels must be excluded from the auxiliary head used for both temperature fitting and uncertainty scoring. Official val is never calibration data.
+
+`script/train_segmentation.py` uses the same all-L reporting recipe for one standalone budget.
 
 ## Notebook configuration
 
