@@ -8,7 +8,7 @@ Requirements were checked against the local assignment PDF. Settings that are no
 
 1. Work in `advanced-cv/lab-2`, independently of lab-1's task-specific code.
 2. Share one ordered ID manifest, preprocessing specification, and task-model training recipe.
-3. Use `select(request: SelectionRequest) -> list[int]` from `alseg/contracts.py`.
+3. Use `Selector.select(request: SelectionRequest) -> list[int]` from `alseg/interfaces.py`.
 4. Follow cumulative budgets `[21, 42, 84, 168, 336, 672]`, with new batches `[21, 21, 42, 84, 168, 336]`.
 5. Use one base seed and independent selection, training, and calibration RNG streams. For round index `r` starting at zero, use `base_seed + stream_offset + r`. Do not include method names in seeds.
 6. Start with an empty labeled set. Uncertainty and UHerding use the same Random cold-start fallback, matching Random's first 21 IDs. MaxHerding selects its own first batch.
@@ -20,35 +20,40 @@ The first deliverable is the contract and passing checks, not a trained segmenta
 
 ```text
 advanced-cv/lab-2/
-  pyproject.toml
+  AGENTS.md               # Persistent project and Kaggle conventions
+  pyproject.toml          # Increase project version before every source release
   README.md
   SETUP_PLAN.md
-  kaggle_setup.ipynb       # environment, contracts, and dataset preflight
+  kaggle_setup.ipynb       # Launch commands using %run
   configs/base.toml
   alseg/
-    __init__.py
-    contracts.py          # shared request/batch types and boundary checks
-    fixtures.py           # deterministic inputs for independent development
-    setup.py              # read-only environment and train/val preflight
-    data.py               # planned: person 1, manifest/datasets/oracle
-    encoders.py           # planned: person 1, adapters/features/cache
-    task.py               # planned: person 1, head/training/inference/metrics
-    acquisition.py        # planned: person 2, methods and sigma/tau
-    run.py                # planned: person 1, runner and Random baseline
+    core/models.py        # Domain models and invariant checks
+    interfaces.py         # ABC boundaries: Selector.select(request)
+    adapters/
+      voc.py              # VOC filesystem integration
+      acquisition.py      # Planned: person 2's acquisition implementations
+      encoders.py         # Planned: person 1's frozen encoder integrations
+    cli/
+      setup.py            # rich-click environment/data preflight
+      run.py              # Planned: rich-click benchmark entry point
+    testing/fixtures.py   # Shared synthetic inputs
+    pipeline.py           # Planned: person 1's experiment orchestration
+    metrics.py            # Planned: person 1's evaluation functions
   tests/
     test_contracts.py
     test_setup.py
-    test_acquisition.py   # planned: person 2's algorithm sanity checks
-    test_protocol.py      # planned: person 1's oracle/training/metric checks
+    test_cli.py
+    test_acquisition.py   # Planned: person 2's algorithm sanity checks
+    test_protocol.py      # Planned: person 1's oracle/training/metric checks
 ```
 
-Use one trainer for every acquisition method. Notebooks display results and launch shared code; they must not contain a second benchmark implementation. Keep interfaces as simple dataclasses and functions, without a plugin framework.
+Use one trainer for every acquisition method. Notebooks display results and launch shared code; they must not contain a second benchmark implementation. Keep domain data in dataclasses and define ABCs at component boundaries. Core models do not import CLI/adapters; adapters depend on interfaces and core; the pipeline composes them. Use rich-click for every CLI. Add metrics and model adapters when implemented, without empty placeholder modules.
 
 All code, comments, configuration descriptions, and project documentation are written in English.
 
 ## 3. Kaggle runtime and reproducibility
 
-Kaggle is the execution environment. Its input mounts are read-only; caches, results, and extracted source belong under `/kaggle/working/`. Local source files in VS Code are not automatically present in a remote kernel. Upload or synchronize the package, config, and tests before executing notebook cells.
+Kaggle is the execution environment. Its input mounts are read-only; caches and results belong under `/kaggle/working/`. Local source files in VS Code are not automatically present in a remote kernel. Publish source as a Kaggle dataset and attach it to the notebook. Increase `[project].version` in `pyproject.toml` before every dataset update. Both teammates must attach the same source dataset version and restart their kernels after updating it. Read code from the input mount and write outputs only to `/kaggle/working/`. Launch notebook scripts with `%run` (preferred) or `!python`, never `subprocess`.
 
 The supplied dataset mount is:
 
@@ -56,9 +61,9 @@ The supplied dataset mount is:
 /kaggle/input/datasets/gopalbhattrai/pascal-voc-2012-dataset/
 ```
 
-The supplied nested directory is `VOC2012_test/VOC2012_test/`. Keep it as a reference, but require official segmentation train/val lists and masks for the assignment. `alseg.setup` discovers a single complete train/val root under the mount, or validates an explicit `data.voc_root` override. It fails if only test data is available or multiple valid roots are found.
+The supplied nested directory is `VOC2012_test/VOC2012_test/`. Keep it as a reference, but require official segmentation train/val lists and masks for the assignment. `alseg.cli.setup` discovers a single complete train/val root under the mount, or validates an explicit `data.voc_root` override. It fails if only test data is available or multiple valid roots are found.
 
-Use Kaggle's preinstalled PyTorch for the initial contract checks; do not reinstall a different CUDA stack. Record Python, PyTorch, CUDA, GPU, and full installed package versions after a successful setup. Freeze the actual benchmark environment after a GPU smoke run. The initial `pyproject.toml` declares compatibility bounds, not an exact benchmark lockfile; attach the same saved Kaggle environment/dataset/model versions to both teammates' runs.
+Use Kaggle's preinstalled PyTorch for the initial contract checks; install rich-click for CLI commands; do not reinstall a different CUDA stack. Record Python, PyTorch, CUDA, GPU, and full installed package versions after a successful setup. Freeze the actual benchmark environment after a GPU smoke run. The initial `pyproject.toml` declares compatibility bounds, not an exact benchmark lockfile; attach the same saved Kaggle environment/dataset/model versions to both teammates' runs.
 
 Use `tomllib` from Python 3.11+. Add torchvision, Pillow, plotting, and one checkpoint-loading library when their implementation steps require them. Do not install the entire lab-1 environment.
 
@@ -79,7 +84,7 @@ Acquisition never receives an oracle or a dataset returning hidden masks. Offici
 
 ## 5. Trainer-to-selector contract
 
-`alseg/contracts.py` is the shared source of truth. Boundary tensors are CPU tensors; the acquisition implementation can move computation to a device internally. Requests and their tensor/list contents must not be mutated.
+`alseg/core/models.py` is the shared source of truth. Boundary tensors are CPU tensors; the acquisition implementation can move computation to a device internally. Requests and their tensor/list contents must not be mutated.
 
 | Field | Format | Meaning |
 | --- | --- | --- |
@@ -96,14 +101,14 @@ Acquisition never receives an oracle or a dataset returning hidden masks. Offici
 Implemented API:
 
 ```python
-from alseg.contracts import SelectionRequest, validate_selection
+from alseg.core.models import SelectionRequest, validate_selection
 
 request = SelectionRequest(
     method=method, embeddings=embeddings,
     labeled_ids=labeled_ids, unlabeled_ids=unlabeled_ids,
     n_select=n_select, seed=seed, uncertainty=uncertainty, sigma=sigma,
 )
-selected_ids = select(request)  # Person 2 implements select.
+selected_ids = selector.select(request)  # Person 2 implements the Selector ABC.
 validate_selection(request, selected_ids)  # Before Oracle.query.
 ```
 
@@ -205,9 +210,9 @@ Mark reduced-budget/epoch runs as smoke tests and exclude them from benchmark ta
 
 Future runner interface, not implemented at step 0:
 
-```bash
-python -m alseg.run --config configs/base.toml --encoder encoder_1 --method random
-python -m alseg.run --config configs/base.toml --encoder encoder_2 --method uherding
+```ipython
+%run -m alseg.cli.run -- --config "$config_path" --encoder encoder_1 --method random
+%run -m alseg.cli.run -- --config "$config_path" --encoder encoder_2 --method uherding
 ```
 
 Use separate branches for segmentation and acquisition. Any contract change must update its caller, documentation, and fixture together.

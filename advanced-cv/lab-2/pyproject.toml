@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "alseg"
-version = "0.1.0"
+version = "0.2.0"
 description = "Shared active-learning segmentation contracts for Assignment 2"
 requires-python = ">=3.11"
-dependencies = ["torch>=2.3,<3"]
+dependencies = ["torch>=2.3,<3", "rich-click>=1.8,<2"]
 
 [project.optional-dependencies]
 test = ["pytest>=8,<10"]
