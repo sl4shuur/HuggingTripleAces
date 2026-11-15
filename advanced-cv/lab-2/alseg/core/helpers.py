@@ -1,4 +1,7 @@
-"""Shared checks for CPU tensors and canonical pool IDs."""
+"""Shared helpers for the project."""
+
+import csv
+from pathlib import Path
 
 import torch
 from torch import Tensor
@@ -18,3 +21,11 @@ def check_tensor(value: Tensor, name: str, dtype: torch.dtype, ndim: int) -> Non
         raise ValueError(f"{name} must be a CPU {dtype} tensor with {ndim} dimensions")
     if value.is_floating_point() and not torch.isfinite(value).all():
         raise ValueError(f"{name} must contain only finite values")
+
+
+
+def write_csv(path: Path, rows: list[dict]) -> None:
+    with path.open("w", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)

@@ -9,6 +9,29 @@ from alseg.core.helpers import check_ids, check_tensor
 
 NUM_CLASSES = 21
 IGNORE_INDEX = 255
+CLASS_NAMES = (
+    "background",
+    "aeroplane",
+    "bicycle",
+    "bird",
+    "boat",
+    "bottle",
+    "bus",
+    "car",
+    "cat",
+    "chair",
+    "cow",
+    "diningtable",
+    "dog",
+    "horse",
+    "motorbike",
+    "person",
+    "pottedplant",
+    "sheep",
+    "sofa",
+    "train",
+    "tvmonitor",
+)
 
 
 @dataclass(frozen=True)

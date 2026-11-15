@@ -9,8 +9,8 @@ from torch import Tensor
 
 from alseg.core.helpers import check_ids
 from alseg.core.pool import PoolManifest
-from alseg.data import load_mask, load_rgb
-from alseg.interfaces import EvaluationSource, ImageSource, Oracle
+from alseg.data.voc import load_mask, load_rgb
+from alseg.interfaces.data import EvaluationSource, ImageSource, Oracle
 
 
 class VocImages(ImageSource):
