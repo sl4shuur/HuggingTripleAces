@@ -1,0 +1,37 @@
+# Shared scaffold. Freeze the training recipe after the first real GPU smoke run.
+seed = 42
+budgets = [21, 42, 84, 168, 336, 672]
+
+[data]
+dataset_root = "/kaggle/input/datasets/gopalbhattrai/pascal-voc-2012-dataset"
+# Informational: this is not the segmentation train/val root.
+provided_test_root = "/kaggle/input/datasets/gopalbhattrai/pascal-voc-2012-dataset/VOC2012_test/VOC2012_test/"
+# Empty means discover exactly one root containing official train AND val masks.
+voc_root = ""
+ignore_index = 255
+num_classes = 21
+
+[paths]
+cache_dir = "/kaggle/working/alseg/cache"
+runs_dir = "/kaggle/working/alseg/runs"
+
+[protocol]
+cold_start = "random"
+selection_seed_offset = 0
+training_seed_offset = 10000
+calibration_seed_offset = 20000
+calibration_fraction = 0.2
+calibration_min_images = 4
+
+[acquisition]
+tie_break = "smallest_pool_id"
+maxherding_sigma_rule = "median_pairwise_distance"
+uherding_sigma_rule = "minimum_labeled_pairwise_distance"
+# Primary uncertainty, image aggregation, tau search and degenerate-sigma
+# fallback must be agreed with person 2 before benchmark runs.
+
+[task]
+head = "linear_1x1"
+retrain_from_scratch = true
+# Encoder checkpoints, preprocessing, optimizer, epochs and batch size are
+# deliberately unset until checkpoint provenance and GPU memory are checked.
