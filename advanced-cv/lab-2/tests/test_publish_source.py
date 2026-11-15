@@ -72,7 +72,9 @@ def source(tmp_path):
     return root
 
 
-@pytest.mark.parametrize("notebook_name", ["setup.ipynb", "train.ipynb"])
+@pytest.mark.parametrize(
+    "notebook_name", ["setup.ipynb", "train.ipynb", "extract_features.ipynb"]
+)
 def test_bundle_is_source_only_with_clean_notebook_and_hashes(
     source, tmp_path, notebook_name
 ):

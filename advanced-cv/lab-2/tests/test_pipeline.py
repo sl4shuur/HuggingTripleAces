@@ -76,8 +76,8 @@ def test_random_rounds_query_only_new_ids(voc, tmp_path):
     config = ExperimentConfig(protocol={"calibration_fraction": 0}).model_dump(
         mode="json"
     )
-    first = _query_round(config, oracle, [0, 1], 0, 1, single=False)
-    second = _query_round(config, oracle, first["unlabeled_ids"], 1, 2, single=False)
+    first = _query_round(config, oracle, [0, 1], 0, 1)
+    second = _query_round(config, oracle, first["unlabeled_ids"], 1, 2)
     assert len(first["new_ids"]) == len(second["new_ids"]) == 1
     assert set(first["new_ids"]).isdisjoint(second["new_ids"])
     assert sorted(second["ids"]) == [0, 1]
@@ -201,4 +201,9 @@ def test_failed_round_preserves_completed_metrics_and_query_state(
         assert [int(r["budget"]) for r in csv.DictReader(file)] == [1]
     state = json.loads((run_dir / "state.json").read_text())
     assert state["budget"] == 2 and state["status"] == "queried"
+    first = json.loads((run_dir / "round-00-budget-1/config.json").read_text())
+    second = json.loads((run_dir / "round-01-budget-2/config.json").read_text())
+    assert first["training_seed"] == second["training_seed"] == 10042
+    assert first["calibration_seed"] == second["calibration_seed"] == 20042
+    assert second["n_fit"] == 2 and second["n_calibration"] == 0
     assert len((run_dir / "oracle_queries.jsonl").read_text().splitlines()) == 2

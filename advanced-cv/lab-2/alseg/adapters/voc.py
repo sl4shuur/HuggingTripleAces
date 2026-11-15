@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import Literal
 
 import torch
 from PIL import Image
@@ -16,9 +17,20 @@ from alseg.interfaces.data import EvaluationSource, ImageSource, Oracle
 class VocImages(ImageSource):
     """Image-only train-pool access for feature extraction and selection."""
 
-    def __init__(self, root: Path, manifest: PoolManifest):
+    def __init__(
+        self,
+        root: Path,
+        manifest: PoolManifest,
+        split: Literal["train", "val"] = "train",
+    ):
+        if split not in ("train", "val"):
+            raise ValueError("split must be train or val")
         self._root = Path(root)
-        self._ids = tuple(manifest.pool_ids)
+        self._ids = tuple(manifest.pool_ids if split == "train" else manifest.val_ids)
+
+    @property
+    def image_ids(self) -> tuple[str, ...]:
+        return self._ids
 
     def __len__(self) -> int:
         return len(self._ids)
@@ -36,8 +48,7 @@ class VocEvaluation(VocImages, EvaluationSource):
     """Official val images and masks; keep separate from train-pool access."""
 
     def __init__(self, root: Path, manifest: PoolManifest):
-        super().__init__(root, manifest)
-        self._ids = tuple(manifest.val_ids)
+        super().__init__(root, manifest, split="val")
 
     def get_mask(self, image_id: int) -> Tensor:
         stem = self._stem(image_id)

@@ -1,8 +1,6 @@
 """Compose cumulative Random acquisition, fresh-head training and val reporting."""
 
-import hashlib
 import importlib.metadata
-import json
 import os
 import time
 from itertools import pairwise
@@ -12,7 +10,6 @@ import torch
 
 from alseg.adapters.voc import VocEvaluation, VocImages, VocOracle
 from alseg.config import TrackingConfig, get_project_version
-from alseg.core.calibration import split_labeled_ids
 from alseg.core.helpers import write_csv, write_json
 from alseg.core.pool import PoolManifest
 from alseg.core.predictions import IGNORE_INDEX, NUM_CLASSES
@@ -20,7 +17,7 @@ from alseg.core.selection import AcquisitionMethod
 from alseg.data.preprocessing import resize_mask
 from alseg.data.voc import find_voc_root, load_manifest
 from alseg.interfaces.data import ImageSource, Oracle
-from alseg.interfaces.encoder import Encoder
+from alseg.interfaces.encoder import FeatureSource
 from alseg.nn.encoders import load_encoder
 from alseg.nn.evaluation import evaluate_head
 from alseg.nn.extraction import iter_features
@@ -49,7 +46,11 @@ def _validate_training_config(config: dict, device: str) -> None:
 
 
 def _prepare_labeled_features(
-    config: dict, pool: ImageSource, oracle: Oracle, encoder: Encoder, ids: list[int]
+    config: dict,
+    pool: ImageSource,
+    oracle: Oracle,
+    encoder: FeatureSource,
+    ids: list[int],
 ) -> tuple[torch.Tensor, torch.Tensor]:
     encoder_config = config["encoder"]
     features = torch.cat(
@@ -73,7 +74,7 @@ def _build_run_config(
     config: dict,
     tracking: TrackingConfig,
     manifest: PoolManifest,
-    encoder: Encoder,
+    encoder: FeatureSource,
     selection: dict,
     device: str,
     smoke: bool,
@@ -96,7 +97,7 @@ def _build_run_config(
         **{
             f"{stream}_seed": config["seed"]
             + config["protocol"][f"{stream}_seed_offset"]
-            + selection["round"]
+            + (selection["round"] if stream == "selection" else 0)
             for stream in ("selection", "training", "calibration")
         },
         "val_images": min(8, len(manifest.val_ids)) if smoke else len(manifest.val_ids),
@@ -197,7 +198,7 @@ def run_experiment(
     tracking: TrackingConfig,
     smoke: bool = False,
 ) -> list[dict]:
-    """Keep one pool/oracle across budgets; reserve queried labels for calibration."""
+    """Keep one pool/oracle across budgets; train each reporting head on all queried L."""
     return _run_random(config, run_dir, config["budgets"], device, tracking, smoke)
 
 
@@ -207,9 +208,8 @@ def _query_round(
     unlabeled_ids: list[int],
     round_index: int,
     budget: int,
-    single: bool,
 ) -> dict:
-    """Acquire only missing labels and split the cumulative queried set."""
+    """Acquire only missing labels; Random needs no calibration head."""
     protocol = config["protocol"]
     seed = config["seed"] + protocol["selection_seed_offset"] + round_index
     order = torch.randperm(
@@ -219,22 +219,14 @@ def _query_round(
     new_ids = [unlabeled_ids[i] for i in order[:n_new].tolist()]
     oracle.query(new_ids)
     labeled_ids = oracle.labeled_ids
-    fit_ids, calibration_ids = labeled_ids, []
-    if not single:
-        fit_ids, calibration_ids = split_labeled_ids(
-            labeled_ids,
-            protocol["calibration_fraction"],
-            protocol["calibration_min_images"],
-            config["seed"] + protocol["calibration_seed_offset"] + round_index,
-        )
     return {
         "round": round_index,
         "budget": budget,
         "new_ids": new_ids,
         "ids": labeled_ids,
         "unlabeled_ids": sorted(set(unlabeled_ids) - set(new_ids)),
-        "fit_ids": fit_ids,
-        "calibration_ids": calibration_ids,
+        "fit_ids": labeled_ids,
+        "calibration_ids": [],
     }
 
 
@@ -243,7 +235,7 @@ def _run_round(
     tracking: TrackingConfig,
     pool: ImageSource,
     oracle: Oracle,
-    encoder: Encoder,
+    encoder: FeatureSource,
     evaluation: VocEvaluation,
     run_dir: Path,
     selection_seconds: float,
@@ -334,9 +326,7 @@ def _run_random(
     run_dir.mkdir(parents=True, exist_ok=False)
     oracle = VocOracle(root, manifest, run_dir / "oracle_queries.jsonl")
     manifest_data = {"pool_ids": manifest.pool_ids, "val_ids": manifest.val_ids}
-    manifest_hash = hashlib.sha256(
-        json.dumps(manifest_data, sort_keys=True).encode()
-    ).hexdigest()
+    manifest_hash = manifest.sha256
     write_json(run_dir / "manifest.json", {**manifest_data, "sha256": manifest_hash})
     if not single:
         write_json(
@@ -348,9 +338,7 @@ def _run_random(
     results, selections = [], []
     for round_index, budget in enumerate(budgets):
         start = time.perf_counter()
-        selection = _query_round(
-            config, oracle, unlabeled_ids, round_index, budget, single
-        )
+        selection = _query_round(config, oracle, unlabeled_ids, round_index, budget)
         unlabeled_ids = selection["unlabeled_ids"]
         selection["stems"] = [manifest.pool_ids[i] for i in selection["ids"]]
         selection_seconds = time.perf_counter() - start

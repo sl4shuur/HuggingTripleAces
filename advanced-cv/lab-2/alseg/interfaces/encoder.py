@@ -5,10 +5,24 @@ from abc import ABC, abstractmethod
 from torch import Tensor
 
 from alseg.core.features import EncoderFeatures
+from alseg.interfaces.data import ImageSource
 
 
-class Encoder(ABC):
+class FeatureSource(ABC):
+    """ID-aligned frozen features, computed from images or read from a cache."""
+
+    @abstractmethod
+    def get_features(self, source: ImageSource, ids: list[int]) -> EncoderFeatures: ...
+
+    @abstractmethod
+    def describe(self) -> dict: ...
+
+
+class Encoder(FeatureSource):
     """Frozen feature extraction, independent of image storage and labels."""
+
+    def get_features(self, source: ImageSource, ids: list[int]) -> EncoderFeatures:
+        return self.encode([source.get_image(i) for i in ids])
 
     @abstractmethod
     def encode(self, images: list[Tensor]) -> EncoderFeatures:

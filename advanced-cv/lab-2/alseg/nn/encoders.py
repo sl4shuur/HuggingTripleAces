@@ -6,10 +6,11 @@ from pathlib import Path
 import torch
 import torch.nn.functional as F
 
+from alseg.adapters.cached_features import CachedFeatures
 from alseg.adapters.dinov2 import DinoV2Encoder
 from alseg.adapters.vit16 import ViT16Encoder
 from alseg.config import EncoderName
-from alseg.interfaces.encoder import Encoder
+from alseg.interfaces.encoder import FeatureSource
 
 VIT16_WEIGHTS = {
     EncoderName.DINO_VITB16: {
@@ -23,8 +24,20 @@ VIT16_WEIGHTS = {
 }
 
 
-def load_encoder(config: dict, cache_dir: Path, device: str) -> Encoder:
+def load_encoder(config: dict, cache_dir: Path, device: str) -> FeatureSource:
     name = EncoderName(config["name"])
+    if config["features_dir"] is not None:
+        identity = {
+            "name": name,
+            "image_size": config["image_size"],
+            "image_pooling": "l2_normalized_cls",
+            "preprocessing": "full_frame_square_bicubic_antialias_clamp_0_1",
+        }
+        if name == EncoderName.DINOV2:
+            identity.update(model_id=config["model_id"], revision=config["revision"])
+        else:
+            identity["weights_sha256"] = VIT16_WEIGHTS[name]["sha256"]
+        return CachedFeatures(Path(config["features_dir"]), identity)
     if name == EncoderName.DINOV2:
         if config["checkpoint_path"] is not None:
             raise ValueError("checkpoint_path is supported only for DINO/iBOT ViT-B/16")

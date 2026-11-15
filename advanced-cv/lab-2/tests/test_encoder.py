@@ -1,5 +1,6 @@
 import json
 
+import numpy as np
 import pytest
 import torch
 from click import ClickException
@@ -102,7 +103,9 @@ def test_cli_saves_subset_identity_and_refuses_overwrite(
     monkeypatch.setattr(extract_features, "find_voc_root", lambda _: tmp_path)
     manifest = PoolManifest(["a", "b", "c"], ["v"])
     monkeypatch.setattr(extract_features, "load_manifest", lambda _: manifest)
-    monkeypatch.setattr(extract_features, "VocImages", lambda *args: TinyImages())
+    monkeypatch.setattr(
+        extract_features, "VocImages", lambda *args, **kwargs: TinyImages()
+    )
     monkeypatch.setattr(
         DinoV2Encoder, "from_pretrained", lambda *args, **kwargs: encoder
     )
@@ -122,13 +125,16 @@ def test_cli_saves_subset_identity_and_refuses_overwrite(
     ]
     result = CliRunner().invoke(extract_features.main, args)
     assert result.exit_code == 0, result.output
-    saved = torch.load(output / "embeddings.pt", weights_only=True)
-    metadata = json.loads((output / "metadata.json").read_text())
-    assert saved["ids"] == [0, 1]
-    assert saved["embeddings"].shape == (2, 12)
-    assert metadata["complete_pool"] is False
-    assert metadata["pool_ids"] == ["a", "b", "c"]
-    assert metadata["frozen"] is True
+    saved = np.load(output / "dinov2/train/embeddings.npy")
+    metadata = json.loads((output / "dinov2/metadata.json").read_text())
+    assert saved.shape == (2, 12)
+    assert metadata["splits"]["train"]["complete"] is False
+    assert json.loads((output / "manifest.json").read_text())["pool_ids"] == [
+        "a",
+        "b",
+        "c",
+    ]
+    assert metadata["encoder_identity"]["frozen"] is True
     repeated = CliRunner().invoke(extract_features.main, args, standalone_mode=False)
     assert repeated.exit_code == 1
     assert isinstance(repeated.exception, ClickException)

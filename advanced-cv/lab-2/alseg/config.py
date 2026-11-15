@@ -102,6 +102,7 @@ class EncoderConfig(ConfigModel):
     image_size: int = Field(default=448, gt=0)
     batch_size: int = Field(default=2, gt=0)
     checkpoint_path: Path | None = None
+    features_dir: Path | None = None
 
     @model_validator(mode="after")
     def validate_checkpoint(self) -> Self:
@@ -137,13 +138,13 @@ class ExperimentConfig(ConfigModel):
             raise ValueError(
                 "budgets must be nonempty, positive and strictly increasing"
             )
-        if any(
-            self.seed + offset + len(self.budgets) - 1 >= 2**63
-            for offset in (
-                self.protocol.selection_seed_offset,
-                self.protocol.training_seed_offset,
-                self.protocol.calibration_seed_offset,
+        if (
+            max(
+                self.seed + self.protocol.selection_seed_offset + len(self.budgets) - 1,
+                self.seed + self.protocol.training_seed_offset,
+                self.seed + self.protocol.calibration_seed_offset,
             )
+            >= 2**63
         ):
             raise ValueError("Round seeds must be below 2**63")
         return self

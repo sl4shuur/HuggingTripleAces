@@ -4,7 +4,7 @@ import torch
 
 from alseg.core.predictions import IGNORE_INDEX, NUM_CLASSES
 from alseg.interfaces.data import EvaluationSource
-from alseg.interfaces.encoder import Encoder
+from alseg.interfaces.encoder import FeatureSource
 from alseg.metrics import confusion_matrix, segmentation_metrics
 from alseg.nn.extraction import iter_features
 from alseg.nn.heads import segmentation_loss
@@ -13,7 +13,7 @@ from alseg.nn.heads import segmentation_loss
 @torch.no_grad()
 def evaluate_head(
     head,
-    encoder: Encoder,
+    encoder: FeatureSource,
     source: EvaluationSource,
     ids: list[int],
     batch_size: int,

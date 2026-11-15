@@ -1,6 +1,8 @@
 """Identity of the official segmentation pool and evaluation split."""
 
-from dataclasses import dataclass
+import hashlib
+import json
+from dataclasses import asdict, dataclass
 
 
 @dataclass(frozen=True)
@@ -9,6 +11,12 @@ class PoolManifest:
 
     pool_ids: list[str]
     val_ids: list[str]
+
+    @property
+    def sha256(self) -> str:
+        return hashlib.sha256(
+            json.dumps(asdict(self), sort_keys=True).encode()
+        ).hexdigest()
 
     def __post_init__(self) -> None:
         for name, ids in (("pool_ids", self.pool_ids), ("val_ids", self.val_ids)):

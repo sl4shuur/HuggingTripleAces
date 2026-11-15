@@ -11,6 +11,11 @@ class ImageSource(ABC):
     @abstractmethod
     def __len__(self) -> int: ...
 
+    @property
+    def image_ids(self) -> tuple[str, ...] | None:
+        """Ordered filename stems for cache validation, when available."""
+        return None
+
     @abstractmethod
     def get_image(self, image_id: int) -> Tensor:
         """Return an unnormalized RGB uint8 CPU tensor [3,H,W]."""
