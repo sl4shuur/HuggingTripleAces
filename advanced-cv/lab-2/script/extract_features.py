@@ -1,4 +1,4 @@
-"""Extract frozen DINOv2 image embeddings without accessing pool labels."""
+"""Extract frozen image embeddings without accessing pool labels."""
 
 import importlib.metadata
 import json
@@ -9,11 +9,11 @@ from pathlib import Path
 import rich_click as click
 import torch
 
-from alseg.adapters.dinov2 import DinoV2Encoder
 from alseg.adapters.voc import VocImages
 from alseg.cli_common import CONTEXT_SETTINGS, config_option
 from alseg.config import ExperimentConfig, get_project_version
 from alseg.data.voc import find_voc_root, load_manifest
+from alseg.nn.encoders import load_encoder
 from alseg.nn.extraction import iter_features
 
 
@@ -70,12 +70,8 @@ def main(
                 "Use a new output directory; existing artifacts are never overwritten"
             )
         encoder_config = config["encoder"]
-        encoder = DinoV2Encoder.from_pretrained(
-            encoder_config["model_id"],
-            encoder_config["revision"],
-            encoder_config["image_size"],
-            device=device,
-            cache_dir=Path(config["paths"]["cache_dir"]) / "huggingface",
+        encoder = load_encoder(
+            encoder_config, Path(config["paths"]["cache_dir"]), device
         )
         warmup = encoder.encode([pool.get_image(ids[0])])
         patch_shape = list(warmup.patch_features.shape[1:])

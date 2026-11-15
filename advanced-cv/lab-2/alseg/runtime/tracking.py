@@ -48,12 +48,15 @@ def wandb_run(config: TrackingConfig, run_dir: Path, name: str, run_config: dict
             dir=str(run_dir),
             mode=config.mode,
             config=run_config,
+            group=run_config.get("experiment_name"),
             settings=wandb.Settings(
                 disable_git=True,
                 disable_code=True,
                 api_key=config.api_key.get_secret_value() if config.api_key else None,
             ),
         )
+        run.define_metric("budget")
+        run.define_metric("val/*", step_metric="budget")
         yield WandbLogger(experiment=run, log_model=False)
     except BaseException:
         exit_code = 1
@@ -76,7 +79,7 @@ def log_run_artifacts(
     scalars = {
         f"val/{key}": value for key, value in metrics.items() if key != "per_class_iou"
     }
-    logger.log_metrics(scalars)
+    logger.log_metrics({"budget": run.config["budget"], **scalars})
     run.summary.update(scalars)
     run.log(
         {
@@ -121,3 +124,37 @@ def log_run_artifacts(
     ):
         artifact.add_file(str(run_dir / name), name=name)
     run.log_artifact(artifact)
+
+
+def log_experiment_history(
+    config: TrackingConfig, run_dir: Path, run_config: dict, results: list[dict]
+) -> None:
+    """One W&B trajectory per experiment, alongside the individual head runs."""
+    with wandb_run(
+        config, run_dir, run_dir.name, {**run_config, "scope": "trajectory"}
+    ) as logger:
+        if not logger:
+            return
+        import wandb
+
+        for row in results:
+            logger.experiment.log(
+                {
+                    "budget": row["budget"],
+                    **{
+                        f"val/{key}": row[key]
+                        for key in ("miou", "pixel_accuracy", "mean_class_accuracy")
+                    },
+                }
+            )
+        artifact = wandb.Artifact(f"history-{logger.experiment.id}", type="experiment")
+        for name in (
+            "config.json",
+            "manifest.json",
+            "selections.json",
+            "oracle_queries.jsonl",
+            "results.csv",
+            "state.json",
+        ):
+            artifact.add_file(str(run_dir / name), name=name)
+        logger.experiment.log_artifact(artifact)

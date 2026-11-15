@@ -1,6 +1,7 @@
 """Experiment defaults, validation and JSON snapshots shared by all entry points."""
 
 import tomllib
+from itertools import pairwise
 from pathlib import Path
 from typing import Literal, Self
 
@@ -65,11 +66,11 @@ class PathsConfig(ConfigModel):
 
 class ProtocolConfig(ConfigModel):
     cold_start: str = "random"
-    selection_seed_offset: int = 0
-    training_seed_offset: int = 10000
-    calibration_seed_offset: int = 20000
-    calibration_fraction: float = 0.2
-    calibration_min_images: int = 4
+    selection_seed_offset: int = Field(default=0, ge=0)
+    training_seed_offset: int = Field(default=10000, ge=0)
+    calibration_seed_offset: int = Field(default=20000, ge=0)
+    calibration_fraction: float = Field(default=0.2, ge=0, lt=1, allow_inf_nan=False)
+    calibration_min_images: int = Field(default=4, ge=0)
 
 
 class AcquisitionConfig(ConfigModel):
@@ -88,10 +89,20 @@ class TaskConfig(ConfigModel):
 
 
 class EncoderConfig(ConfigModel):
+    name: Literal["dinov2", "dino_vitb16", "ibot_vitb16"] = "dinov2"
     model_id: str = "facebook/dinov2-small"
     revision: str = "ed25f3a31f01632728cabb09d1542f84ab7b0056"
     image_size: int = Field(default=448, gt=0)
     batch_size: int = Field(default=2, gt=0)
+    checkpoint_path: Path | None = None
+
+    @model_validator(mode="after")
+    def validate_checkpoint(self) -> Self:
+        if self.name != "dinov2" and self.image_size % 16:
+            raise ValueError("DINO/iBOT image_size must be a multiple of patch_size=16")
+        if self.name == "dinov2" and self.checkpoint_path is not None:
+            raise ValueError("checkpoint_path is supported only for DINO/iBOT ViT-B/16")
+        return self
 
 
 class ExperimentConfig(ConfigModel):
@@ -108,6 +119,27 @@ class ExperimentConfig(ConfigModel):
     device: Literal["cpu", "cuda"] = "cuda"
     run_dir: Path | None = None
     smoke: bool = False
+
+    @model_validator(mode="after")
+    def validate_budgets(self) -> Self:
+        if (
+            not self.budgets
+            or any(b <= 0 for b in self.budgets)
+            or any(a >= b for a, b in pairwise(self.budgets))
+        ):
+            raise ValueError(
+                "budgets must be nonempty, positive and strictly increasing"
+            )
+        if any(
+            self.seed + offset + len(self.budgets) - 1 >= 2**63
+            for offset in (
+                self.protocol.selection_seed_offset,
+                self.protocol.training_seed_offset,
+                self.protocol.calibration_seed_offset,
+            )
+        ):
+            raise ValueError("Round seeds must be below 2**63")
+        return self
 
     @model_validator(mode="after")
     def resolve_smoke_recipe(self) -> Self:

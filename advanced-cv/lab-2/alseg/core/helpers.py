@@ -1,6 +1,7 @@
 """Shared helpers for the project."""
 
 import csv
+import json
 from pathlib import Path
 
 import torch
@@ -24,7 +25,15 @@ def check_tensor(value: Tensor, name: str, dtype: torch.dtype, ndim: int) -> Non
 
 
 def write_csv(path: Path, rows: list[dict]) -> None:
-    with path.open("w", newline="") as file:
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    with temporary.open("w", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
+    temporary.replace(path)
+
+
+def write_json(path: Path, data: dict | list) -> None:
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(data, indent=2, allow_nan=False) + "\n")
+    temporary.replace(path)
