@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 
 from torch import Tensor
 
+from alseg.core.features import EncoderFeatures
 from alseg.core.selection import SelectionRequest
 
 
@@ -52,4 +53,18 @@ class Oracle(ABC):
     @abstractmethod
     def get_mask(self, image_id: int) -> Tensor:
         """Read an already-queried mask without consuming annotation budget."""
+        ...
+
+
+class Encoder(ABC):
+    """Frozen feature extraction, independent of image storage and labels."""
+
+    @abstractmethod
+    def encode(self, images: list[Tensor]) -> EncoderFeatures:
+        """Encode raw RGB uint8 CPU [3,H,W] images, preserving batch order."""
+        ...
+
+    @abstractmethod
+    def describe(self) -> dict:
+        """Return checkpoint, preprocessing and feature identity for artifacts."""
         ...

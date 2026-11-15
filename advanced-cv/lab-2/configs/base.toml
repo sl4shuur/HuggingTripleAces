@@ -33,5 +33,11 @@ uherding_sigma_rule = "minimum_labeled_pairwise_distance"
 [task]
 head = "linear_1x1"
 retrain_from_scratch = true
-# Encoder checkpoints, preprocessing, optimizer, epochs and batch size are
-# deliberately unset until checkpoint provenance and GPU memory are checked.
+# The first encoder is configured below. Optimizer, epochs, augmentation and
+# the training batch size remain unset until the segmentation smoke run.
+
+[encoder]
+model_id = "facebook/dinov2-small"
+revision = "ed25f3a31f01632728cabb09d1542f84ab7b0056"
+image_size = 448
+batch_size = 2
