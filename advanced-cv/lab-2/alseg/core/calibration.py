@@ -5,8 +5,8 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
+from alseg.core.helpers import check_tensor
 from alseg.core.predictions import IGNORE_INDEX, NUM_CLASSES, LogitBatch
-from alseg.core.validation import validate_tensor
 
 
 @dataclass(frozen=True)
@@ -17,7 +17,7 @@ class CalibrationBatch:
     targets: Tensor
 
     def __post_init__(self) -> None:
-        validate_tensor(self.targets, "targets", torch.int64, 3)
+        check_tensor(self.targets, "targets", torch.int64, 3)
         if self.targets.shape != self.predictions.valid_pixels.shape:
             raise ValueError("Calibration targets must match predictions")
         valid_labels = ((self.targets >= 0) & (self.targets < NUM_CLASSES)) | (

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
-from alseg.core.validation import validate_ids, validate_tensor
+from alseg.core.helpers import check_ids, check_tensor
 
 NUM_CLASSES = 21
 IGNORE_INDEX = 255
@@ -20,9 +20,9 @@ class LogitBatch:
     valid_pixels: Tensor
 
     def __post_init__(self) -> None:
-        validate_ids(self.ids, "ids")
-        validate_tensor(self.logits, "logits", torch.float32, 4)
-        validate_tensor(self.valid_pixels, "valid_pixels", torch.bool, 3)
+        check_ids(self.ids, "ids")
+        check_tensor(self.logits, "logits", torch.float32, 4)
+        check_tensor(self.valid_pixels, "valid_pixels", torch.bool, 3)
         b, c, h, w = self.logits.shape
         if b == 0 or h == 0 or w == 0 or c != NUM_CLASSES or len(self.ids) != b:
             raise ValueError(

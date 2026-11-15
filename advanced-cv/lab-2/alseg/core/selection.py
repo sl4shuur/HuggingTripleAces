@@ -2,14 +2,21 @@
 
 import math
 from dataclasses import dataclass
-from typing import Literal
+from enum import StrEnum
 
 import torch
 from torch import Tensor
 
-from alseg.core.validation import validate_ids, validate_tensor
+from alseg.core.helpers import check_ids, check_tensor
 
-Method = Literal["random", "uncertainty", "maxherding", "uherding"]
+
+class AcquisitionMethod(StrEnum):
+    """Supported strategies with stable string values for configs and results."""
+
+    RANDOM = "random"
+    UNCERTAINTY = "uncertainty"
+    MAXHERDING = "maxherding"
+    UHERDING = "uherding"
 
 
 @dataclass(frozen=True)
@@ -20,7 +27,7 @@ class SelectionRequest:
     Selectors must not mutate tensors or lists. Ties use the smallest pool ID.
     """
 
-    method: Method
+    method: AcquisitionMethod
     embeddings: Tensor
     labeled_ids: list[int]
     unlabeled_ids: list[int]
@@ -30,17 +37,17 @@ class SelectionRequest:
     sigma: float | None = None
 
     def __post_init__(self) -> None:
-        if self.method not in ("random", "uncertainty", "maxherding", "uherding"):
-            raise ValueError(f"Unknown acquisition method: {self.method}")
-        validate_tensor(self.embeddings, "embeddings", torch.float32, 2)
+        if not isinstance(self.method, AcquisitionMethod):
+            raise ValueError("method must be an AcquisitionMethod enum member")
+        check_tensor(self.embeddings, "embeddings", torch.float32, 2)
         n, d = self.embeddings.shape
         if n == 0 or d == 0:
             raise ValueError("embeddings must have nonempty shape [N,D]")
         norms = torch.linalg.vector_norm(self.embeddings, dim=1)
         if not torch.allclose(norms, torch.ones_like(norms), atol=1e-5, rtol=1e-5):
             raise ValueError("embeddings must be L2-normalized")
-        validate_ids(self.labeled_ids, "labeled_ids")
-        validate_ids(self.unlabeled_ids, "unlabeled_ids")
+        check_ids(self.labeled_ids, "labeled_ids")
+        check_ids(self.unlabeled_ids, "unlabeled_ids")
         labeled, unlabeled = set(self.labeled_ids), set(self.unlabeled_ids)
         if labeled & unlabeled or labeled | unlabeled != set(range(n)):
             raise ValueError("L and U must form a disjoint partition of the pool")
@@ -51,12 +58,19 @@ class SelectionRequest:
         if type(self.seed) is not int or not 0 <= self.seed < 2**63:
             raise ValueError("seed must be an integer in [0, 2**63)")
         if self.uncertainty is not None:
-            validate_tensor(self.uncertainty, "uncertainty", torch.float32, 1)
+            check_tensor(self.uncertainty, "uncertainty", torch.float32, 1)
             if self.uncertainty.shape != (n,) or (self.uncertainty < 0).any():
                 raise ValueError(
                     "uncertainty must contain N nonnegative target weights"
                 )
-        if self.method in ("uncertainty", "uherding") and self.uncertainty is None:
+        if (
+            self.method
+            in (
+                AcquisitionMethod.UNCERTAINTY,
+                AcquisitionMethod.UHERDING,
+            )
+            and self.uncertainty is None
+        ):
             raise ValueError(
                 "Model-based acquisition requires uncertainty; resolve cold start first"
             )
@@ -67,13 +81,20 @@ class SelectionRequest:
             or self.sigma <= 0
         ):
             raise ValueError("sigma must be finite and positive")
-        if self.method in ("maxherding", "uherding") and self.sigma is None:
+        if (
+            self.method
+            in (
+                AcquisitionMethod.MAXHERDING,
+                AcquisitionMethod.UHERDING,
+            )
+            and self.sigma is None
+        ):
             raise ValueError("Herding requires an explicitly resolved sigma")
 
 
 def validate_selection(request: SelectionRequest, selected_ids: list[int]) -> None:
     """Runner check to perform before making any oracle query."""
-    validate_ids(selected_ids, "selected_ids")
+    check_ids(selected_ids, "selected_ids")
     if len(selected_ids) != request.n_select:
         raise ValueError("Selector returned the wrong number of new IDs")
     if not set(selected_ids) <= set(request.unlabeled_ids):
