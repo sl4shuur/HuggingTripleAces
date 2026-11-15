@@ -33,11 +33,19 @@ uherding_sigma_rule = "minimum_labeled_pairwise_distance"
 [task]
 head = "linear_1x1"
 retrain_from_scratch = true
-# The first encoder is configured below. Optimizer, epochs, augmentation and
-# the training batch size remain unset until the segmentation smoke run.
+epochs = 20
+batch_size = 4
+learning_rate = 0.001
+weight_decay = 0.0
+# Fixed AdamW, no scheduler or augmentation. Official val is reporting only.
 
 [encoder]
 model_id = "facebook/dinov2-small"
 revision = "ed25f3a31f01632728cabb09d1542f84ab7b0056"
 image_size = 448
 batch_size = 2
+
+[tracking]
+wandb_entity = "public-team"
+wandb_project = "active-learning-segmentation"
+mode = "online"
