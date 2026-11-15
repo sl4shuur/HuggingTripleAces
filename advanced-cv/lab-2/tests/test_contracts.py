@@ -6,6 +6,7 @@ import torch
 from synthetic import make_fixture
 
 from alseg.core.calibration import CalibrationBatch
+from alseg.core.helpers import check_tensor
 from alseg.core.pool import PoolManifest
 from alseg.core.scores import assemble_scores
 from alseg.core.selection import AcquisitionMethod, validate_selection
@@ -46,7 +47,6 @@ def test_teammate_handoff(dimension):
         {"embeddings": torch.zeros(6, 2)},
         {"embeddings": torch.full((6, 2), float("nan"))},
         {"embeddings": torch.ones(6, 2, dtype=torch.float64)},
-        {"method": "unknown"},
         {"method": AcquisitionMethod.MAXHERDING},
         {"sigma": 0},
         {"sigma": float("inf")},
@@ -161,5 +161,10 @@ def test_method_config_and_result_round_trip(method):
 def test_method_rejects_unknown_config_values_and_unparsed_strings():
     with pytest.raises(ValueError):
         AcquisitionMethod("unknown")
-    with pytest.raises(ValueError, match="AcquisitionMethod"):
+    with pytest.raises(TypeError, match="AcquisitionMethod"):
         replace(make_fixture().request, method="uncertainty")
+
+
+def test_tensor_validation_rejects_non_tensor_input():
+    with pytest.raises(TypeError, match="must be a tensor"):
+        check_tensor([], "embeddings", torch.float32, 2)

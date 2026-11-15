@@ -7,8 +7,8 @@ from click.testing import CliRunner
 from PIL import Image
 
 from alseg.adapters.voc import VocEvaluation, VocImages, VocOracle
-from alseg.data import inspect_voc_samples, load_manifest, load_mask
-from setup_project import main
+from alseg.data.voc import inspect_voc_samples, load_manifest, load_mask
+from script.setup_project import main
 
 
 @pytest.fixture

@@ -1,9 +1,10 @@
 import json
 from pathlib import Path
 
+import pytest
 from click.testing import CliRunner
 
-from setup_project import main
+from script.setup_project import main
 
 
 def test_setup_reports_runtime_without_requiring_dataset():
@@ -32,3 +33,31 @@ def test_missing_voc_data_is_a_cli_error(tmp_path):
     assert result.exit_code == 1
     assert "VOC2012_test alone is insufficient" in result.output
     assert "Traceback" not in result.output
+
+
+def test_training_cli_loads_private_config_without_starting_training(
+    tmp_path, monkeypatch
+):
+    pytest.importorskip("lightning")
+    from alseg import pipeline
+    from script.train_segmentation import main as train
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("WANDB_API_KEY=private-cli-test-key\n")
+    monkeypatch.delenv("WANDB_API_KEY", raising=False)
+    calls = []
+
+    def record_run(config, run_dir, budget, device, tracking, **kwargs):
+        calls.append((config, budget, tracking))
+        return {"budget": budget}
+
+    monkeypatch.setattr(pipeline, "run_training", record_run)
+    result = CliRunner().invoke(
+        train, ["--env-file", str(env_file), "--wandb-mode", "offline"]
+    )
+    assert result.exit_code == 0, result.output
+    config, budget, tracking = calls[0]
+    assert budget == 21 and config["task"]["epochs"] == 20
+    assert tracking.mode == "offline"
+    assert tracking.api_key.get_secret_value() == "private-cli-test-key"
+    assert "private-cli-test-key" not in result.output

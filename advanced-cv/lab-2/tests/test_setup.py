@@ -1,9 +1,10 @@
 import tomllib
+from itertools import pairwise
 from pathlib import Path
 
 import pytest
 
-from alseg.data import find_voc_root, validate_voc_root
+from alseg.data.voc import find_voc_root, validate_voc_root
 
 
 def make_voc(root):
@@ -59,7 +60,7 @@ def test_config_uses_cumulative_budgets_and_writable_kaggle_outputs():
     with (Path(__file__).parents[1] / "configs" / "base.toml").open("rb") as file:
         config = tomllib.load(file)
     budgets = config["budgets"]
-    assert [budgets[0]] + [b - a for a, b in zip(budgets, budgets[1:])] == [
+    assert [budgets[0]] + [b - a for a, b in pairwise(budgets)] == [
         21,
         21,
         42,
