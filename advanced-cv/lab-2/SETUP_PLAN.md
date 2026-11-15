@@ -2,13 +2,13 @@
 
 Person 1 owns data, frozen encoders, segmentation training, evaluation, and the experiment runner. Person 2 owns uncertainty estimation, MaxHerding, UHerding, and adaptive acquisition parameters. Both parts use one contract and one runner so results remain comparable.
 
-Requirements were checked against the local assignment PDF. Settings that are not prescribed by the assignment are proposed team conventions to freeze before the benchmark. Step 0 and the data/oracle portion of step 1 are implemented. The next milestone is one frozen encoder, a segmentation head, metrics, and two Random smoke rounds.
+Requirements were checked against the local assignment PDF. Settings that are not prescribed by the assignment are proposed team conventions to freeze before the benchmark. Step 0 and the data/oracle portion of step 1 are implemented. A first frozen DINOv2 encoder and image/patch extraction are also implemented. A segmentation head, Lightning training, mIoU, W&B, and a single-budget Random baseline are implemented. The next milestone is cumulative Random rounds and held-out calibration integration.
 
 ## 1. Agree on the shared protocol
 
 1. Work in `advanced-cv/lab-2`, independently of lab-1's task-specific code.
 2. Share one ordered ID manifest, preprocessing specification, and task-model training recipe.
-3. Use `Selector.select(request: SelectionRequest) -> list[int]` from `alseg/interfaces.py`.
+3. Use `Selector.select(request: SelectionRequest) -> list[int]` from `alseg/interfaces/`.
 4. Follow cumulative budgets `[21, 42, 84, 168, 336, 672]`, with new batches `[21, 21, 42, 84, 168, 336]`.
 5. Use one base seed and independent selection, training, and calibration RNG streams. For round index `r` starting at zero, use `base_seed + stream_offset + r`. Do not include method names in seeds.
 6. Start with an empty labeled set. Uncertainty and UHerding use the same Random cold-start fallback, matching Random's first 21 IDs. MaxHerding selects its own first batch.
@@ -22,11 +22,14 @@ The first deliverable is the contract and passing checks, not a trained segmenta
 advanced-cv/lab-2/
   AGENTS.md               # Persistent project and Kaggle conventions
   pyproject.toml          # Increase version before every source dataset update
-  cli_common.py           # Shared rich-click settings and options
-  setup_project.py        # Setup entry point
-  run_experiment.py       # Planned: benchmark entry point
+  alseg/cli_common.py      # Shared rich-click settings and options
+  script/setup_project.py # Setup entry point
+  script/extract_features.py # Frozen image-embedding extraction
+  script/publish_source.py # Kaggle source create/update entry point
+  script/train_segmentation.py # One-budget head training and W&B
+  script/run_experiment.py # Planned: cumulative benchmark entry point
   README.md, SETUP_PLAN.md
-  kaggle_setup.ipynb       # Launch entry-point files using %run
+  kaggle/setup.ipynb       # Launch entry-point files using %run
   configs/base.toml
   alseg/
     core/
@@ -35,12 +38,19 @@ advanced-cv/lab-2/
       predictions.py      # LogitBatch
       calibration.py      # CalibrationBatch
       scores.py           # Canonical score alignment
-      helpers.py       # Shared tensor/ID checks
-    interfaces.py         # ABC boundaries
-    data.py               # VOC discovery, image/mask decoding and diagnostics
+      helpers.py          # Shared tensor/ID checks and CSV writer
+      features.py         # EncoderFeatures
+    interfaces/           # Acquisition, data and encoder ABCs
+    data/voc.py           # VOC discovery, image/mask decoding and diagnostics
     adapters/voc.py       # VocImages, VocEvaluation, VocOracle implementations
-    pipeline.py           # Planned: experiment orchestration
-    metrics.py            # Planned: evaluation
+    adapters/dinov2.py     # First frozen backbone
+    data/preprocessing.py # Deterministic RGB/mask transforms
+    nn/extraction.py      # Image-only batch extraction
+    config.py             # Project root and shared TOML loading
+    pipeline.py           # One-budget Random orchestration
+    metrics.py            # Dataset-wide mIoU
+    nn/                   # Heads, training, extraction and evaluation
+    runtime/              # W&B and notebook secret access
   tests/
     synthetic.py          # Shared fixtures; outside production core
     test_contracts.py, test_setup.py, test_cli.py
@@ -48,13 +58,13 @@ advanced-cv/lab-2/
     test_protocol.py      # Planned: oracle/training/metric checks
 ```
 
-Use one trainer for every acquisition method. Notebooks display results and launch shared code; they must not contain a second benchmark implementation. Keep domain data in dataclasses and define ABCs at component boundaries. Core models do not import entry points or adapters. Adapters contain only classes implementing interfaces; standalone data helpers live in `alseg/data.py`. The pipeline composes these components. Use separate rich-click entry-point files sharing `cli_common.py`, without a `cli/` package. Do not create `__init__.py` files; use namespace packages. Add metrics and model adapters when implemented, without empty placeholder modules.
+Use one trainer for every acquisition method. Notebooks display results and launch shared code; they must not contain a second benchmark implementation. Keep domain data in dataclasses and define ABCs at component boundaries. Core models do not import entry points or adapters. Adapters contain only classes implementing interfaces; standalone data helpers live in `alseg/data/voc.py`. The pipeline composes these components. Use separate rich-click entry-point files sharing `alseg/cli_common.py`, without a `cli/` package. Do not create `__init__.py` files; use namespace packages. Add metrics and model adapters when implemented, without empty placeholder modules.
 
 All code, comments, configuration descriptions, and project documentation are written in English.
 
 ## 3. Kaggle runtime and reproducibility
 
-Kaggle is the execution environment. Its input mounts are read-only; caches and results belong under `/kaggle/working/`. Local source files in VS Code are not automatically present in a remote kernel. Publish source as a Kaggle dataset and attach it to the notebook. Increase `[project].version` in `pyproject.toml` before every dataset update. Both teammates must attach the same source dataset version and restart their kernels after updating it. Read code from the input mount and write outputs only to `/kaggle/working/`. Launch notebook scripts with `%run` (preferred) or `!python`, never `subprocess`.
+Kaggle is the execution environment. Its input mounts are read-only; caches and results belong under `/kaggle/working/`. Local source files in VS Code are not automatically present in a remote kernel. Publish source as a Kaggle dataset and attach it to the notebook. Increase `[project].version` in `pyproject.toml` before every dataset update. Both teammates must attach the same source dataset version and restart their kernels after updating it. Read code from the input mount, or checksum-verify and extract source.zip into `/kaggle/working/`. Write outputs only to `/kaggle/working/`. Publish with `script/publish_source.py`; use its dry run to review the source-only archive and let its remote version check enforce increasing project versions. Launch notebook scripts with `%run` (preferred) or `!python`, never `subprocess`.
 
 The supplied dataset mount is:
 
@@ -62,7 +72,7 @@ The supplied dataset mount is:
 /kaggle/input/datasets/gopalbhattrai/pascal-voc-2012-dataset/
 ```
 
-The supplied nested directory is `VOC2012_test/VOC2012_test/`. Keep it as a reference, but require official segmentation train/val lists and masks for the assignment. `setup_project.py` discovers a single complete train/val root under the mount, or validates an explicit `data.voc_root` override. It fails if only test data is available or multiple valid roots are found.
+The supplied nested directory is `VOC2012_test/VOC2012_test/`. Keep it as a reference, but require official segmentation train/val lists and masks for the assignment. `script/setup_project.py` discovers a single complete train/val root under the mount, or validates an explicit `data.voc_root` override. It fails if only test data is available or multiple valid roots are found.
 
 Use Kaggle's preinstalled PyTorch for the initial contract checks; install rich-click for CLI commands; do not reinstall a different CUDA stack. Record Python, PyTorch, CUDA, GPU, and full installed package versions after a successful setup. Freeze the actual benchmark environment after a GPU smoke run. The initial `pyproject.toml` declares compatibility bounds, not an exact benchmark lockfile; attach the same saved Kaggle environment/dataset/model versions to both teammates' runs.
 
@@ -87,7 +97,7 @@ Acquisition never receives an oracle or a dataset returning hidden masks. Offici
 
 `alseg/core/selection.py` is the shared source of truth. Boundary tensors are CPU tensors; the acquisition implementation can move computation to a device internally. Requests and their tensor/list contents must not be mutated.
 
-Use `AcquisitionMethod.MAXHERDING` and other enum members in domain code. Parse external strings with `AcquisitionMethod(config_value)` and serialize `.value` to config/results. Synthetic fixtures belong to `tests/synthetic.py`, outside core; the setup notebook loads them using `%run`.
+Use `AcquisitionMethod.MAXHERDING` and other enum members in domain code. Parse external strings with `AcquisitionMethod(config_value)` and serialize `.value` to config/results. Synthetic fixtures belong to `tests/synthetic.py`, outside core; the setup notebook imports them after adding `tests/` to `sys.path`.
 
 | Field | Format | Meaning |
 | --- | --- | --- |
@@ -107,9 +117,14 @@ Implemented API:
 from alseg.core.selection import AcquisitionMethod, SelectionRequest, validate_selection
 
 request = SelectionRequest(
-    method=AcquisitionMethod.MAXHERDING, embeddings=embeddings,
-    labeled_ids=labeled_ids, unlabeled_ids=unlabeled_ids,
-    n_select=n_select, seed=seed, uncertainty=uncertainty, sigma=sigma,
+    method=AcquisitionMethod.MAXHERDING,
+    embeddings=embeddings,
+    labeled_ids=labeled_ids,
+    unlabeled_ids=unlabeled_ids,
+    n_select=n_select,
+    seed=seed,
+    uncertainty=uncertainty,
+    sigma=sigma,
 )
 selected_ids = selector.select(request)  # Person 2 implements the Selector ABC.
 validate_selection(request, selected_ids)  # Before Oracle.query.
@@ -172,7 +187,7 @@ Full-data upper bound is a separate run with the same training/calibration recip
 
 ## 7. Configuration, artifacts, and metrics
 
-Before benchmarking, freeze the remaining settings in `base.toml`: encoder checkpoint and immutable revision/checksum, preprocessing, image-vector pooling, head, optimizer, LR, epochs, batch size, augmentations, calibration, uncertainty aggregation, sigma/tau rules, and metric conventions. The current config intentionally leaves unverified model/training choices unset.
+Before benchmarking, freeze the remaining settings in `base.toml`: encoder checkpoint and immutable revision/checksum, preprocessing, image-vector pooling, head, optimizer, LR, epochs, batch size, augmentations, calibration, uncertainty aggregation, sigma/tau rules, and metric conventions. The first encoder/head recipe is configured and checked; the second encoder and acquisition/calibration choices remain to be frozen.
 
 Choose two encoders after checking dense feature availability, checkpoint access, licensing, pretraining provenance, absence of VOC fine-tuning, and actual GPU memory. Compare similar model sizes when possible.
 
@@ -211,7 +226,7 @@ Keep source, config, and tiny fixtures in Git; exclude real data, caches, and ch
 
 Mark reduced-budget/epoch runs as smoke tests and exclude them from benchmark tables. Measure one real round before scheduling all 50 runs. Do not change the recipe per method to fit the available time.
 
-Future runner interface, not implemented at step 0 (`run_script` points to `run_experiment.py`):
+Future runner interface, not implemented at step 0 (`run_script` points to `script/run_experiment.py`):
 
 ```ipython
 %run "$run_script" --config "$config_path" --encoder encoder_1 --method random
@@ -234,3 +249,9 @@ Use separate branches for segmentation and acquisition. Any contract change must
 - Full-pool selection fits memory; chunked gains match a small dense reference.
 
 The assignment requires disclosure of AI assistance, including prompts/responses or transcripts. Preserve this interaction for the submission appendix. This setup supports your implementation and does not replace your own understanding or defense.
+
+## 10. Current tracking and training scope
+
+`TrackingConfig` uses Pydantic Settings with no environment prefix. A local `.env` can contain `WANDB_API_KEY`; on Kaggle enable the same secret in Add-ons > Secrets. `get_secret` detects Kaggle, Colab, or local runtime. Never save the typed `SecretStr` API key in run snapshots. Default entity is exactly `public-team`. Offline/disabled tracking does not request secrets.
+
+`script/train_segmentation.py` currently runs one Random budget, trains all queried L, then reports native-resolution official val metrics. It records `n_fit=budget` and `n_calibration=0`. The proposed calibration split above remains an integration step; do not treat the current entry point as a completed AL benchmark.

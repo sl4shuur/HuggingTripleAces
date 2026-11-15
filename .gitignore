@@ -206,7 +206,7 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-data/
+/data/
 *.csv
 comp-vision/ass3/VOC2012_train_val/
 comp-vision/ass3/VOC2012_test/

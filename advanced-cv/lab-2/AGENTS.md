@@ -2,8 +2,10 @@
 
 - Write source code, comments, configuration descriptions, and documentation in English.
 - Do not create `__init__.py` files. Use Python namespace packages.
-- Split domain models into files by responsibility in `alseg/core/`; do not collect all models in one file. Keep ABC contracts in `alseg/interfaces.py`.
-- `alseg/adapters/` contains only classes implementing interfaces. Put standalone data helpers in `alseg/data.py` or another relevant module outside adapters.
+- Split domain models into files by responsibility in `alseg/core/`; do not collect all models in one file. Group ABC contracts by responsibility in `alseg/interfaces/`.
+- `alseg/adapters/` contains only classes implementing interfaces. Put standalone data helpers in `alseg/data/` or another relevant module outside adapters.
+- Neural-network code belongs in `nn/`, runtime/tracking in `runtime/`, and shared file writers in `core/helpers.py`.
+- Load local `.env` through Pydantic Settings without an environment prefix; read Kaggle credentials with `get_secret`. Exclude API keys from configuration artifacts.
 - Keep entry points in root `script/` (next to `alseg/`). Share presentation/options through `alseg/cli_common.py`; keep that file there.
 - Keep future experiment orchestration in `alseg/pipeline.py` and evaluation functions in `alseg/metrics.py` when implemented.
 - Core models must not import adapters or entry-point code. Use ABCs at actual component boundaries, not for every helper.
