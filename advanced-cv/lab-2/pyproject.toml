@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "alseg"
-version = "0.4.0"
+version = "0.5.0"
 description = "Shared active-learning segmentation contracts for Assignment 2"
 requires-python = ">=3.11"
 dependencies = ["torch>=2.3,<3", "rich-click>=1.8,<2", "numpy>=1.26", "Pillow>=10"]
@@ -12,13 +12,11 @@ dependencies = ["torch>=2.3,<3", "rich-click>=1.8,<2", "numpy>=1.26", "Pillow>=1
 [project.optional-dependencies]
 test = ["pytest>=8,<10"]
 encoder = ["transformers==5.20.2"]
+publish = ["kaggle==2.2.5", "packaging>=24"]
 
 [tool.setuptools.packages.find]
-include = ["alseg*"]
+include = ["alseg*", "script*"]
 namespaces = true
-
-[tool.setuptools]
-py-modules = ["cli_common", "setup_project"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

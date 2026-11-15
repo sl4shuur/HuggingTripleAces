@@ -7,6 +7,7 @@ from typing import Any, TypeVar
 import rich_click as click
 
 F = TypeVar("F", bound=Callable[..., Any])
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 CONTEXT_SETTINGS = {
     "help_option_names": ["-h", "--help"],
