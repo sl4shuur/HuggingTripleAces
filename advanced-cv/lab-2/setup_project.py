@@ -8,14 +8,19 @@ from pathlib import Path
 import rich_click as click
 import torch
 
-from alseg.data import find_voc_root, validate_voc_root
+from alseg.data import find_voc_root, inspect_voc_samples, load_manifest
 from cli_common import CONTEXT_SETTINGS, config_option
 
 
 @click.command(context_settings=CONTEXT_SETTINGS)
 @config_option()
 @click.option("--check-data", is_flag=True, help="Validate official train/val files.")
-def main(config_path: Path, check_data: bool) -> None:
+@click.option(
+    "--inspect-data",
+    is_flag=True,
+    help="Also decode the first train/val RGB and mask pairs; implies --check-data.",
+)
+def main(config_path: Path, check_data: bool, inspect_data: bool) -> None:
     """Report the runtime and optionally check the VOC segmentation mount."""
     try:
         with config_path.open("rb") as file:
@@ -29,19 +34,24 @@ def main(config_path: Path, check_data: bool) -> None:
             "dataset_root": settings["data"]["dataset_root"],
             "data_checked": False,
         }
-        if check_data:
+        if check_data or inspect_data:
             explicit = settings["data"]["voc_root"]
             root = (
                 Path(explicit)
                 if explicit
                 else find_voc_root(Path(settings["data"]["dataset_root"]))
             )
-            splits = validate_voc_root(root)
+            manifest = load_manifest(root)
             report.update(
                 voc_root=str(root),
-                split_sizes={name: len(ids) for name, ids in splits.items()},
+                split_sizes={
+                    "train": len(manifest.pool_ids),
+                    "val": len(manifest.val_ids),
+                },
                 data_checked=True,
             )
+            if inspect_data:
+                report["samples"] = inspect_voc_samples(root, manifest)
     except (OSError, ValueError, KeyError) as error:
         raise click.ClickException(str(error)) from error
     click.echo(json.dumps(report, indent=2))

@@ -2,6 +2,61 @@
 
 from pathlib import Path
 
+import numpy as np
+import torch
+from PIL import Image
+from torch import Tensor
+
+from alseg.core.pool import PoolManifest
+from alseg.core.predictions import IGNORE_INDEX, NUM_CLASSES
+
+
+def load_manifest(root: Path) -> PoolManifest:
+    """Keep official split-file order; integer IDs remain permanent row indices."""
+    splits = validate_voc_root(root)
+    return PoolManifest(pool_ids=splits["train"], val_ids=splits["val"])
+
+
+def load_rgb(path: Path) -> Tensor:
+    """Decode raw RGB without resizing or model-specific normalization."""
+    with Image.open(path) as image:
+        pixels = np.array(image.convert("RGB"), copy=True)
+    return torch.from_numpy(pixels).permute(2, 0, 1).contiguous()
+
+
+def load_mask(path: Path, image_size: tuple[int, int]) -> Tensor:
+    """Read PNG class indices, not their palette colors; preserve VOC void=255."""
+    with Image.open(path) as mask:
+        if mask.mode not in ("P", "L"):
+            raise ValueError(f"Expected an indexed or grayscale mask: {path}")
+        if mask.size != image_size:
+            raise ValueError(f"Image/mask size mismatch: {path}")
+        pixels = torch.from_numpy(np.array(mask, dtype=np.int64, copy=True))
+    valid = ((pixels >= 0) & (pixels < NUM_CLASSES)) | (pixels == IGNORE_INDEX)
+    if not valid.all():
+        raise ValueError(f"Mask has class IDs outside 0..20 and 255: {path}")
+    return pixels
+
+
+def inspect_voc_samples(root: Path, manifest: PoolManifest) -> dict:
+    """Decode the first train/val pairs for setup diagnostics, not acquisition."""
+    report = {}
+    for split, ids in (("train", manifest.pool_ids), ("val", manifest.val_ids)):
+        stem = ids[0]
+        image = load_rgb(root / "JPEGImages" / f"{stem}.jpg")
+        mask = load_mask(
+            root / "SegmentationClass" / f"{stem}.png",
+            (image.shape[2], image.shape[1]),
+        )
+        report[split] = {
+            "stem": stem,
+            "image_shape": list(image.shape),
+            "mask_shape": list(mask.shape),
+            "class_ids": mask.unique().tolist(),
+            "void_pixels": int((mask == IGNORE_INDEX).sum()),
+        }
+    return report
+
 
 def validate_voc_root(root: Path) -> dict[str, list[str]]:
     """Require all official train/val images and semantic masks; never use test."""
