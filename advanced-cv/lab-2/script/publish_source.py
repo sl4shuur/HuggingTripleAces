@@ -3,7 +3,6 @@
 import hashlib
 import json
 import re
-import tomllib
 import uuid
 import zipfile
 from pathlib import Path
@@ -12,7 +11,8 @@ from tempfile import TemporaryDirectory
 import rich_click as click
 from packaging.version import Version
 
-from alseg.cli_common import CONTEXT_SETTINGS, PROJECT_ROOT
+from alseg.cli_common import CONTEXT_SETTINGS
+from alseg.config import PROJECT_ROOT, load_config
 
 
 def stage_source(project_dir: Path, output_dir: Path, dataset: str, title: str) -> dict:
@@ -22,8 +22,7 @@ def stage_source(project_dir: Path, output_dir: Path, dataset: str, title: str) 
     if not 6 <= len(title) <= 50:
         raise ValueError("Dataset title must contain 6..50 characters")
     project_dir = project_dir.resolve()
-    with (project_dir / "pyproject.toml").open("rb") as file:
-        config = tomllib.load(file)
+    config = load_config(project_dir / "pyproject.toml")
     version = config["project"]["version"]
     Version(version)
     paths = set()

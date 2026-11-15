@@ -8,8 +8,8 @@ import torch.nn.functional as F
 from torch import Tensor
 
 from alseg.core.features import EncoderFeatures
-from alseg.features import IMAGE_MEAN, IMAGE_STD, prepare_images
 from alseg.interfaces import Encoder
+from alseg.preprocessing import IMAGE_MEAN, IMAGE_STD, prepare_images
 
 
 class DinoV2Encoder(Encoder):

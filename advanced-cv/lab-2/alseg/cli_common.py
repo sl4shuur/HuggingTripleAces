@@ -6,8 +6,9 @@ from typing import Any, TypeVar
 
 import rich_click as click
 
+from alseg.config import PROJECT_ROOT
+
 F = TypeVar("F", bound=Callable[..., Any])
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 CONTEXT_SETTINGS = {
     "help_option_names": ["-h", "--help"],
@@ -35,7 +36,7 @@ def config_option(*, required: bool = False) -> Callable[[F], F]:
         "config_path",
         type=click.Path(path_type=Path, exists=True, dir_okay=False),
         required=required,
-        default=None if required else Path(__file__).parent / "configs" / "base.toml",
+        default=None if required else PROJECT_ROOT / "configs" / "base.toml",
         show_default=True,
         help="Experiment configuration TOML.",
     )

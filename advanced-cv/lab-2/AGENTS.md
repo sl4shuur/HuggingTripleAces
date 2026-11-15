@@ -4,7 +4,7 @@
 - Do not create `__init__.py` files. Use Python namespace packages.
 - Split domain models into files by responsibility in `alseg/core/`; do not collect all models in one file. Keep ABC contracts in `alseg/interfaces.py`.
 - `alseg/adapters/` contains only classes implementing interfaces. Put standalone data helpers in `alseg/data.py` or another relevant module outside adapters.
-- Do not create a `cli/` package. Use separate entry-point files and share presentation/options through root `cli_common.py`.
+- Keep entry points in root `script/` (next to `alseg/`). Share presentation/options through `alseg/cli_common.py`; keep that file there.
 - Keep future experiment orchestration in `alseg/pipeline.py` and evaluation functions in `alseg/metrics.py` when implemented.
 - Core models must not import adapters or entry-point code. Use ABCs at actual component boundaries, not for every helper.
 - Use `rich_click` for all CLI commands.

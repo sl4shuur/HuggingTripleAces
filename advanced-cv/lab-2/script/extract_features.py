@@ -3,7 +3,6 @@
 import importlib.metadata
 import json
 import time
-import tomllib
 import uuid
 from pathlib import Path
 
@@ -12,9 +11,10 @@ import torch
 
 from alseg.adapters.dinov2 import DinoV2Encoder
 from alseg.adapters.voc import VocImages
-from alseg.cli_common import CONTEXT_SETTINGS, PROJECT_ROOT, config_option
+from alseg.cli_common import CONTEXT_SETTINGS, config_option
+from alseg.config import PROJECT_ROOT, load_config
 from alseg.data import find_voc_root, load_manifest
-from alseg.features import iter_features
+from alseg.extraction import iter_features
 
 
 @click.command(context_settings=CONTEXT_SETTINGS)
@@ -37,8 +37,7 @@ def main(
 ) -> None:
     """Save ID-aligned embeddings, preprocessing identity and runtime profiling."""
     try:
-        with config_path.open("rb") as file:
-            config = tomllib.load(file)
+        config = load_config(config_path)
         if device == "cuda" and not torch.cuda.is_available():
             raise ValueError(
                 "CUDA is unavailable; enable a Kaggle GPU or use --device cpu"
@@ -103,8 +102,9 @@ def main(
             "torch": torch.__version__,
             "transformers": importlib.metadata.version("transformers"),
         }
-        with (PROJECT_ROOT / "pyproject.toml").open("rb") as file:
-            report["project_version"] = tomllib.load(file)["project"]["version"]
+        report["project_version"] = load_config(PROJECT_ROOT / "pyproject.toml")[
+            "project"
+        ]["version"]
         output_dir.mkdir(parents=True)
         torch.save({"ids": ids, "embeddings": embeddings}, output_dir / "embeddings.pt")
         (output_dir / "metadata.json").write_text(json.dumps(report, indent=2) + "\n")
