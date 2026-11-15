@@ -138,9 +138,25 @@ def test_create_only_on_404_and_private_by_default(tmp_path):
     assert api.calls[0][1]["public"] is False
     assert api.calls[0][1]["convert_to_csv"] is False
     forbidden = FakeApi(status=http_error(403))
-    with pytest.raises(HTTPError):
+    with pytest.raises(ValueError, match="403.*--create"):
         publish_release(forbidden, tmp_path, release)
     assert forbidden.calls == []
+
+
+def test_explicit_create_bypasses_forbidden_status_check(tmp_path):
+    api = FakeApi(status=http_error(403))
+    release = {"dataset": DATASET, "project_version": "0.5.0"}
+    assert publish_release(api, tmp_path, release, create=True) == "created"
+    assert api.calls == [
+        ("create", {"public": False, "quiet": True, "convert_to_csv": False})
+    ]
+
+
+def test_authentication_error_does_not_create_a_dataset(tmp_path):
+    api = FakeApi(status=http_error(401))
+    with pytest.raises(HTTPError):
+        publish_release(api, tmp_path, {"dataset": DATASET, "project_version": "0.5.0"})
+    assert api.calls == []
 
 
 @pytest.mark.parametrize("version", ["0.5.0", "0.6.0"])

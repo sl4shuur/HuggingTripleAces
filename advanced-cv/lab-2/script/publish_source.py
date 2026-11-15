@@ -104,17 +104,27 @@ def stage_source(project_dir: Path, output_dir: Path, dataset: str, title: str) 
     return release
 
 
-def publish_release(api, folder: Path, release: dict, public: bool = False) -> str:
-    """Auto-detect create/update; reject unchanged or decreasing project versions."""
+def publish_release(
+    api, folder: Path, release: dict, public: bool = False, *, create: bool = False
+) -> str:
+    """Create explicitly or auto-detect; reject unchanged versions on updates."""
     from requests.exceptions import HTTPError
 
     dataset = release["dataset"]
-    try:
-        status = api.dataset_status(dataset)
-    except HTTPError as error:
-        if error.response is None or error.response.status_code != 404:
-            raise
-        status = None
+    status = None
+    if not create:
+        try:
+            status = api.dataset_status(dataset)
+        except HTTPError as error:
+            if error.response is not None and error.response.status_code == 403:
+                raise ValueError(
+                    "Kaggle returned 403 while checking dataset status. "
+                    "If this is the first release, retry with --create. "
+                    "If the dataset already exists, check the account, slug, "
+                    "and dataset permissions."
+                ) from error
+            if error.response is None or error.response.status_code != 404:
+                raise
     if status is None:
         response = api.dataset_create_new(
             str(folder),
@@ -200,6 +210,11 @@ def publish_release(api, folder: Path, release: dict, public: bool = False) -> s
     is_flag=True,
     help="Create a public dataset; new datasets are private by default.",
 )
+@click.option(
+    "--create",
+    is_flag=True,
+    help="Create the first release without the preliminary dataset status check.",
+)
 def main(
     dataset: str,
     title: str,
@@ -207,6 +222,7 @@ def main(
     output_dir: Path | None,
     dry_run: bool,
     public: bool,
+    create: bool,
 ) -> None:
     """Publish a source release or update it after increasing the project version."""
     try:
@@ -229,7 +245,7 @@ def main(
 
         api = KaggleApi()
         api.authenticate()
-        action = publish_release(api, output_dir, release, public)
+        action = publish_release(api, output_dir, release, public, create=create)
         click.echo(f"Release {action}: https://www.kaggle.com/datasets/{dataset}")
         click.echo("Upload accepted; Kaggle may still be processing the new version.")
     except (OSError, ValueError, KeyError, ImportError) as error:
