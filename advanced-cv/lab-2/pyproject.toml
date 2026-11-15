@@ -14,6 +14,10 @@ test = ["pytest>=8,<10"]
 
 [tool.setuptools.packages.find]
 include = ["alseg*"]
+namespaces = true
+
+[tool.setuptools]
+py-modules = ["cli_common", "setup_project"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
