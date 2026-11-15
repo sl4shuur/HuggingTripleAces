@@ -2,6 +2,7 @@ import json
 
 import pytest
 import torch
+from click import ClickException
 from click.testing import CliRunner
 
 pytest.importorskip("transformers")
@@ -115,6 +116,7 @@ def test_cli_saves_subset_identity_and_refuses_overwrite(
     assert metadata["complete_pool"] is False
     assert metadata["pool_ids"] == ["a", "b", "c"]
     assert metadata["frozen"] is True
-    repeated = CliRunner().invoke(extract_features.main, args)
+    repeated = CliRunner().invoke(extract_features.main, args, standalone_mode=False)
     assert repeated.exit_code == 1
-    assert "never overwritten" in repeated.output
+    assert isinstance(repeated.exception, ClickException)
+    assert "never overwritten" in str(repeated.exception)

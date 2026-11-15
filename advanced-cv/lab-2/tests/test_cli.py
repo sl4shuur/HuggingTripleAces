@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import pytest
+from click import ClickException
 from click.testing import CliRunner
 
 from script.setup_project import main
@@ -29,10 +30,12 @@ def test_missing_voc_data_is_a_cli_error(tmp_path):
     config.write_text(
         f'[data]\ndataset_root = "{tmp_path.as_posix()}"\nvoc_root = ""\n'
     )
-    result = CliRunner().invoke(main, ["--config", str(config), "--check-data"])
+    result = CliRunner().invoke(
+        main, ["--config", str(config), "--check-data"], standalone_mode=False
+    )
     assert result.exit_code == 1
-    assert "VOC2012_test alone is insufficient" in result.output
-    assert "Traceback" not in result.output
+    assert isinstance(result.exception, ClickException)
+    assert "VOC2012_test alone is insufficient" in str(result.exception)
 
 
 def test_training_cli_loads_private_config_without_starting_training(
