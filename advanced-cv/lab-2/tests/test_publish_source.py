@@ -64,11 +64,11 @@ def source(tmp_path):
     root = tmp_path / "project"
     (root / "alseg").mkdir(parents=True)
     (root / "script").mkdir()
-    (root / "configs").mkdir()
+    (root / "experiments").mkdir()
     (root / "pyproject.toml").write_text('[project]\nversion = "0.5.0"\n')
     (root / "alseg" / "data.py").write_text('MESSAGE = "source"\n')
     (root / "script" / "entry.py").write_text('print("entry")\n')
-    (root / "configs" / "base.toml").write_text("seed = 42\n")
+    (root / "experiments" / "cpu.py").write_text("config = {}\n")
     return root
 
 
@@ -106,6 +106,7 @@ def test_bundle_is_source_only_with_clean_notebook_and_hashes(
         assert "kaggle.json" not in archive.namelist()
         assert "alseg/secrets.py" not in archive.namelist()
         assert "dist/model.pt" not in archive.namelist()
+        assert "experiments/cpu.py" in archive.namelist()
         notebook = json.loads(archive.read(f"kaggle/{notebook_name}"))
         assert notebook["cells"][0]["outputs"] == []
         assert notebook["cells"][0]["execution_count"] is None

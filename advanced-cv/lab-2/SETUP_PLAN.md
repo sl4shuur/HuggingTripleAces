@@ -29,9 +29,9 @@ advanced-cv/lab-2/
   script/train_segmentation.py # One-budget head training and W&B
   script/run_experiment.py # Planned: cumulative benchmark entry point
   README.md, SETUP_PLAN.md
-  kaggle/train.ipynb       # Direct training, three code cells
+  kaggle/train.ipynb       # Declarative configuration and training
   kaggle/setup.ipynb       # Optional diagnostics
-  configs/base.toml
+  experiments/cpu.py      # Example: independent ExperimentConfig instance
   alseg/
     core/
       pool.py             # PoolManifest
@@ -188,7 +188,7 @@ Full-data upper bound is a separate run with the same training/calibration recip
 
 ## 7. Configuration, artifacts, and metrics
 
-Before benchmarking, freeze the remaining settings in `base.toml`: encoder checkpoint and immutable revision/checksum, preprocessing, image-vector pooling, head, optimizer, LR, epochs, batch size, augmentations, calibration, uncertainty aggregation, sigma/tau rules, and metric conventions. The first encoder/head recipe is configured and checked; the second encoder and acquisition/calibration choices remain to be frozen.
+Before benchmarking, freeze the remaining defaults in `alseg/config.py`: encoder checkpoint and immutable revision/checksum, preprocessing, image-vector pooling, head, optimizer, LR, epochs, batch size, augmentations, calibration, uncertainty aggregation, sigma/tau rules, and metric conventions. The first encoder/head recipe is configured and checked; the second encoder and acquisition/calibration choices remain to be frozen.
 
 Choose two encoders after checking dense feature availability, checkpoint access, licensing, pretraining provenance, absence of VOC fine-tuning, and actual GPU memory. Compare similar model sizes when possible.
 
@@ -256,3 +256,11 @@ The assignment requires disclosure of AI assistance, including prompts/responses
 `TrackingConfig` uses Pydantic Settings with no environment prefix. A local `.env` can contain `WANDB_API_KEY`; on Kaggle enable the same secret in Add-ons > Secrets. `get_secret` detects Kaggle, Colab, or local runtime. Never save the typed `SecretStr` API key in run snapshots. Default entity is exactly `public-team`. Offline/disabled tracking does not request secrets.
 
 `script/train_segmentation.py` currently runs one Random budget, trains all queried L, then reports native-resolution official val metrics. It records `n_fit=budget` and `n_calibration=0`. The proposed calibration split above remains an integration step; do not treat the current entry point as a completed AL benchmark.
+
+## Notebook configuration
+
+Defaults live only in the Pydantic classes in `alseg/config.py`. `ExperimentConfig(...)` accepts partial section values; omitted values use class defaults. Specific experiments may export a `config` instance from an ordinary `experiments/*.py` module, as in `experiments/cpu.py`.
+
+Notebooks call `.show()`, save a resolved JSON snapshot with `.save()`, then launch the training script through `%run ... --config ...`. They do not call training functions directly. CLI entry points load snapshots with `ExperimentConfig.load()`. Omitting the file means Python defaults. JSON captures a run's configuration; it does not define another set of defaults. Credentials are excluded from display and serialization and loaded at execution time.
+
+Notebook dependency installation reads `pyproject.toml` with uv and targets `sys.executable`, preserving the current Kaggle kernel environment. Do not copy package/version lists into notebook cells.

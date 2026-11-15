@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -10,7 +9,7 @@ pytest.importorskip("transformers")
 from transformers import Dinov2Config, Dinov2Model
 
 from alseg.adapters.dinov2 import DinoV2Encoder
-from alseg.config import TrackingConfig, load_config
+from alseg.config import ExperimentConfig, TrackingConfig
 from alseg.pipeline import run_training
 
 pytest_plugins = ["test_data"]
@@ -38,7 +37,7 @@ def test_random_budget_trains_and_reports_without_exposing_val_to_fit(
     monkeypatch.setattr(
         DinoV2Encoder, "from_pretrained", lambda *args, **kwargs: encoder
     )
-    config = load_config(Path(__file__).parents[1] / "configs" / "base.toml")
+    config = ExperimentConfig().model_dump(mode="json")
     config["data"]["voc_root"] = str(root)
     config["paths"]["cache_dir"] = str(tmp_path / "cache")
     config["encoder"]["image_size"] = 28
@@ -72,7 +71,7 @@ def test_run_training_composes_stages_without_fitting_or_inference(
     from alseg import pipeline
 
     root, _ = voc
-    config = load_config(Path(__file__).parents[1] / "configs" / "base.toml")
+    config = ExperimentConfig().model_dump(mode="json")
     config["data"]["voc_root"] = str(root)
     encoder = SimpleNamespace(describe=lambda: {"model_id": "unit-test-encoder"})
     monkeypatch.setattr(pipeline, "_load_encoder", lambda *args: encoder)

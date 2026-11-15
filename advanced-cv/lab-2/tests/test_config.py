@@ -1,6 +1,8 @@
 import os
+from io import StringIO
 
 import pytest
+from rich.console import Console
 
 from alseg import config
 
@@ -24,18 +26,25 @@ def test_project_root_falls_back_to_cwd_without_project_markers(tmp_path, monkey
     assert config._project_root() == tmp_path
 
 
-def test_load_config_is_independent_of_cwd_and_reports_invalid_toml(
-    tmp_path, monkeypatch
-):
-    file = tmp_path / "config.toml"
-    file.write_text("[encoder]\nimage_size = 448\n")
+def test_project_version_is_independent_of_cwd(tmp_path, monkeypatch):
+    (tmp_path / "pyproject.toml").write_text('[project]\nversion = "1.2.3"\n')
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)
-    assert config.load_config(file) == {"encoder": {"image_size": 448}}
-    file.write_text("[encoder\n")
+    assert config.get_project_version(tmp_path) == "1.2.3"
+
+
+def test_json_snapshot_round_trip_and_validation(tmp_path):
+    experiment = config.ExperimentConfig(task={"epochs": 7}, run_dir=tmp_path / "run")
+    path = experiment.save(tmp_path / "launch" / "config.json")
+    restored = config.ExperimentConfig.load(path)
+    assert restored.model_dump() == experiment.model_dump()
+    path.write_text('{"task": {"epochs": 0}}')
     with pytest.raises(ValueError):
-        config.load_config(file)
+        config.ExperimentConfig.load(path)
+    path.write_text("not json")
+    with pytest.raises(ValueError):
+        config.ExperimentConfig.load(path)
 
 
 def test_tracking_reads_unprefixed_dotenv_and_environment_overrides_it(
@@ -77,3 +86,67 @@ def test_offline_tracking_does_not_request_notebook_secrets(monkeypatch):
     monkeypatch.setattr("alseg.runtime.tracking.get_secret", unexpected_read)
     tracking = config.TrackingConfig(_env_file=None, mode="offline")
     assert configure_tracking(tracking) is tracking
+
+
+def test_notebook_config_merges_sections_without_changing_shared_defaults():
+    experiment = config.ExperimentConfig(task={"epochs": 3}, encoder={"batch_size": 1})
+    original = config.ExperimentConfig()
+    assert experiment.task.epochs == 3
+    assert experiment.task.batch_size == original.task.batch_size
+    assert experiment.encoder.batch_size == 1
+    assert experiment.encoder.revision == original.encoder.revision
+    assert config.ExperimentConfig().task.epochs == original.task.epochs
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"task": {"epochs": 0}},
+        {"task": {"learning_rate": -0.1}},
+        {"task": {"batchsize": 2}},
+        {"device": "gpu"},
+    ],
+)
+def test_notebook_config_rejects_invalid_values_and_misspelled_fields(overrides):
+    with pytest.raises(ValueError):
+        config.ExperimentConfig(**overrides)
+
+
+def test_config_show_and_serialization_exclude_private_key(tmp_path, monkeypatch):
+    env_file = tmp_path / ".env"
+    secret = "private-display-test-key"
+    env_file.write_text(f"WANDB_API_KEY={secret}\n")
+    monkeypatch.delenv("WANDB_API_KEY", raising=False)
+    experiment = config.ExperimentConfig.load(env_file=env_file)
+    output = StringIO()
+    console = Console(file=output, force_jupyter=False, width=120)
+    monkeypatch.setattr(config, "Console", lambda: console)
+    experiment.show()
+    assert "epochs" in output.getvalue() and "public-team" in output.getvalue()
+    assert secret not in output.getvalue()
+    assert "api_key" not in experiment.model_dump()["tracking"]
+    assert secret not in experiment.model_dump_json()
+    snapshot = experiment.save(tmp_path / "launch.json")
+    assert secret not in snapshot.read_text()
+    restored = config.ExperimentConfig.load(snapshot, env_file=env_file)
+    assert restored.tracking.api_key.get_secret_value() == secret
+
+
+def test_edited_config_is_validated_and_smoke_recipe_is_resolved():
+    experiment = config.ExperimentConfig(smoke=True)
+    assert experiment.task.epochs == 2
+    experiment.task.epochs = 4
+    assert experiment.task.epochs == 4
+    with pytest.raises(ValueError):
+        experiment.task.epochs = 0
+
+
+def test_experiment_instances_do_not_share_mutable_defaults():
+    first = config.ExperimentConfig()
+    first.task.epochs = 9
+    first.budgets.append(1000)
+    first.data.voc_root = "/custom/voc"
+    second = config.ExperimentConfig()
+    assert second.task.epochs != first.task.epochs
+    assert 1000 not in second.budgets
+    assert second.data.voc_root == ""

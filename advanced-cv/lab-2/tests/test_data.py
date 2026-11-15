@@ -7,6 +7,7 @@ from click.testing import CliRunner
 from PIL import Image
 
 from alseg.adapters.voc import VocEvaluation, VocImages, VocOracle
+from alseg.config import ExperimentConfig
 from alseg.data.voc import inspect_voc_samples, load_manifest, load_mask
 from script.setup_project import main
 
@@ -130,8 +131,9 @@ def test_sample_inspection_and_cli(voc, tmp_path):
     assert samples["train"]["stem"] == "second"
     assert samples["val"]["class_ids"] == [0, 1, 3, 20, 255]
     assert samples["val"]["void_pixels"] == 1
-    config = tmp_path / "config.toml"
-    config.write_text(f'[data]\ndataset_root = "{root.as_posix()}"\nvoc_root = ""\n')
+    config = ExperimentConfig(data={"dataset_root": str(root)}).save(
+        tmp_path / "config.json"
+    )
     result = CliRunner().invoke(main, ["--config", str(config), "--inspect-data"])
     assert result.exit_code == 0, result.output
     report = json.loads(result.output)

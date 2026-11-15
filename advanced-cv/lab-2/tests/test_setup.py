@@ -1,9 +1,8 @@
-import tomllib
 from itertools import pairwise
-from pathlib import Path
 
 import pytest
 
+from alseg.config import ExperimentConfig
 from alseg.data.voc import find_voc_root, validate_voc_root
 
 
@@ -57,9 +56,8 @@ def test_overlapping_splits_are_rejected(tmp_path):
 
 
 def test_config_uses_cumulative_budgets_and_writable_kaggle_outputs():
-    with (Path(__file__).parents[1] / "configs" / "base.toml").open("rb") as file:
-        config = tomllib.load(file)
-    budgets = config["budgets"]
+    config = ExperimentConfig()
+    budgets = config.budgets
     assert [budgets[0]] + [b - a for a, b in pairwise(budgets)] == [
         21,
         21,
@@ -68,4 +66,7 @@ def test_config_uses_cumulative_budgets_and_writable_kaggle_outputs():
         168,
         336,
     ]
-    assert all(path.startswith("/kaggle/working/") for path in config["paths"].values())
+    assert all(
+        str(path).startswith("/kaggle/working/")
+        for path in config.paths.model_dump().values()
+    )

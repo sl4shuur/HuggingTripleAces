@@ -1,16 +1,15 @@
 import json
-from pathlib import Path
 
 import pytest
 from click import ClickException
 from click.testing import CliRunner
 
+from alseg.config import ExperimentConfig
 from script.setup_project import main
 
 
 def test_setup_reports_runtime_without_requiring_dataset():
-    config = Path(__file__).parents[1] / "configs" / "base.toml"
-    result = CliRunner().invoke(main, ["--config", str(config)])
+    result = CliRunner().invoke(main, [])
     assert result.exit_code == 0, result.output
     report = json.loads(result.output)
     assert report["data_checked"] is False
@@ -26,9 +25,8 @@ def test_setup_help_lists_supported_options():
 
 
 def test_missing_voc_data_is_a_cli_error(tmp_path):
-    config = tmp_path / "config.toml"
-    config.write_text(
-        f'[data]\ndataset_root = "{tmp_path.as_posix()}"\nvoc_root = ""\n'
+    config = ExperimentConfig(data={"dataset_root": str(tmp_path)}).save(
+        tmp_path / "config.json"
     )
     result = CliRunner().invoke(
         main, ["--config", str(config), "--check-data"], standalone_mode=False
@@ -64,3 +62,27 @@ def test_training_cli_loads_private_config_without_starting_training(
     assert tracking.mode == "offline"
     assert tracking.api_key.get_secret_value() == "private-cli-test-key"
     assert "private-cli-test-key" not in result.output
+
+
+def test_training_cli_honors_file_values_and_explicit_overrides(tmp_path, monkeypatch):
+    pytest.importorskip("lightning")
+    from alseg import pipeline
+    from script.train_segmentation import main as train
+
+    config_path = ExperimentConfig(budget=7, device="cpu", task={"epochs": 3}).save(
+        tmp_path / "experiment.json"
+    )
+    calls = []
+
+    def record_run(config, run_dir, budget, device, tracking, **kwargs):
+        calls.append((budget, device, config["task"]["epochs"]))
+        return {"budget": budget}
+
+    monkeypatch.setattr(pipeline, "run_training", record_run)
+    args = ["--config", str(config_path), "--wandb-mode", "disabled"]
+    result = CliRunner().invoke(train, args)
+    assert result.exit_code == 0, result.output
+    assert calls[-1] == (7, "cpu", 3)
+    result = CliRunner().invoke(train, args + ["--budget", "9"])
+    assert result.exit_code == 0, result.output
+    assert calls[-1] == (9, "cpu", 3)
