@@ -39,6 +39,7 @@ def stage_source(project_dir: Path, output_dir: Path, dataset: str, title: str) 
         "SETUP_PLAN.md",
         "AGENTS.md",
         "kaggle/setup.ipynb",
+        "kaggle/train.ipynb",
     ):
         if (project_dir / name).is_file():
             paths.add(project_dir / name)

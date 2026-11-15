@@ -72,14 +72,17 @@ def source(tmp_path):
     return root
 
 
-def test_bundle_is_source_only_with_clean_notebook_and_hashes(source, tmp_path):
+@pytest.mark.parametrize("notebook_name", ["setup.ipynb", "train.ipynb"])
+def test_bundle_is_source_only_with_clean_notebook_and_hashes(
+    source, tmp_path, notebook_name
+):
     (source / ".env").write_text("TOKEN=private")
     (source / "kaggle.json").write_text("private")
     (source / "alseg" / "secrets.py").write_text('TOKEN = "private"')
     (source / "dist").mkdir()
     (source / "dist" / "model.pt").write_bytes(b"weights")
     (source / "kaggle").mkdir()
-    (source / "kaggle" / "setup.ipynb").write_text(
+    (source / "kaggle" / notebook_name).write_text(
         json.dumps(
             {
                 "metadata": {"private": "do not upload"},
@@ -103,7 +106,7 @@ def test_bundle_is_source_only_with_clean_notebook_and_hashes(source, tmp_path):
         assert "kaggle.json" not in archive.namelist()
         assert "alseg/secrets.py" not in archive.namelist()
         assert "dist/model.pt" not in archive.namelist()
-        notebook = json.loads(archive.read("kaggle/setup.ipynb"))
+        notebook = json.loads(archive.read(f"kaggle/{notebook_name}"))
         assert notebook["cells"][0]["outputs"] == []
         assert notebook["cells"][0]["execution_count"] is None
         assert notebook["metadata"] == {}

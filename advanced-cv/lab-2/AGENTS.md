@@ -12,6 +12,7 @@
 - Use `rich_click` for all CLI commands.
 - In notebooks, launch scripts using `%run` (preferred) or `!python`. Do not use `subprocess` to launch scripts or shell commands.
 - Distribute project source to Kaggle as a source-code dataset and update that dataset for releases. Increase `[project].version` in `pyproject.toml` before every Kaggle dataset update; never publish changed source with the same version.
+- Connect notebooks directly to the extracted `source/` input directory; do not add ZIP detection/extraction or make setup diagnostics a training prerequisite.
 - Keep source on the read-only Kaggle input mount. Write caches, test scratch files, and run outputs only under `/kaggle/working/` or a temporary directory.
 - Use the same source dataset version, project version, and experiment config for both teammates. Restart the kernel after switching source dataset versions.
 - Never commit a Kaggle Jupyter server URL or access token.

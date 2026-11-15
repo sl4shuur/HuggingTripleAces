@@ -29,7 +29,8 @@ advanced-cv/lab-2/
   script/train_segmentation.py # One-budget head training and W&B
   script/run_experiment.py # Planned: cumulative benchmark entry point
   README.md, SETUP_PLAN.md
-  kaggle/setup.ipynb       # Launch entry-point files using %run
+  kaggle/train.ipynb       # Direct training, three code cells
+  kaggle/setup.ipynb       # Optional diagnostics
   configs/base.toml
   alseg/
     core/
@@ -64,7 +65,7 @@ All code, comments, configuration descriptions, and project documentation are wr
 
 ## 3. Kaggle runtime and reproducibility
 
-Kaggle is the execution environment. Its input mounts are read-only; caches and results belong under `/kaggle/working/`. Local source files in VS Code are not automatically present in a remote kernel. Publish source as a Kaggle dataset and attach it to the notebook. Increase `[project].version` in `pyproject.toml` before every dataset update. Both teammates must attach the same source dataset version and restart their kernels after updating it. Read code from the input mount, or checksum-verify and extract source.zip into `/kaggle/working/`. Write outputs only to `/kaggle/working/`. Publish with `script/publish_source.py`; use its dry run to review the source-only archive and let its remote version check enforce increasing project versions. Launch notebook scripts with `%run` (preferred) or `!python`, never `subprocess`.
+Kaggle is the execution environment. Its input mounts are read-only; caches and results belong under `/kaggle/working/`. Local source files in VS Code are not automatically present in a remote kernel. Publish source as a Kaggle dataset and attach it to the notebook. Increase `[project].version` in `pyproject.toml` before every dataset update. Both teammates must attach the same source dataset version and restart their kernels after updating it. Import code directly from `/kaggle/input/datasets/denysmykhailov/alseg-source/source`; notebook bootstrap has no archive handling. Training does not require the setup notebook. Write outputs only to `/kaggle/working/`. Publish with `script/publish_source.py`; use its dry run to review the source-only archive and let its remote version check enforce increasing project versions. Launch notebook scripts with `%run` (preferred) or `!python`, never `subprocess`.
 
 The supplied dataset mount is:
 
