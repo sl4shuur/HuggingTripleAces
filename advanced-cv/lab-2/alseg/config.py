@@ -1,11 +1,14 @@
-"""Project location and TOML loading shared by entry points."""
+"""Experiment defaults, validation and JSON snapshots shared by all entry points."""
 
 import tomllib
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from rich.console import Console
+from rich.pretty import Pretty
+from rich.table import Table
 
 
 def _project_root() -> Path:
@@ -18,9 +21,18 @@ def _project_root() -> Path:
 PROJECT_ROOT = _project_root()
 
 
-class TrackingConfig(BaseSettings):
-    """Tracking settings from .env/environment, with no project-specific prefix."""
+class ConfigModel(BaseModel):
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
+    def show(self) -> None:
+        """Show resolved values; secret fields are excluded by their models."""
+        table = Table("Setting", "Value", title=type(self).__name__)
+        for name, value in self.model_dump(mode="json").items():
+            table.add_row(name, Pretty(value, expand_all=True))
+        Console().print(table)
+
+
+class TrackingConfig(BaseSettings, ConfigModel):
     model_config = SettingsConfigDict(
         env_file=PROJECT_ROOT / ".env",
         env_file_encoding="utf-8",
@@ -39,7 +51,94 @@ class TrackingConfig(BaseSettings):
     )
 
 
-def load_config(path: Path) -> dict:
-    """Read a TOML configuration without depending on CLI presentation."""
-    with path.open("rb") as file:
-        return tomllib.load(file)
+class DataConfig(ConfigModel):
+    dataset_root: str = "/kaggle/input/datasets/gopalbhattrai/pascal-voc-2012-dataset"
+    voc_root: str = ""  # Empty means discover official train/val under dataset_root.
+    ignore_index: int = 255
+    num_classes: int = 21
+
+
+class PathsConfig(ConfigModel):
+    cache_dir: Path = Path("/kaggle/working/alseg/cache")
+    runs_dir: Path = Path("/kaggle/working/alseg/runs")
+
+
+class ProtocolConfig(ConfigModel):
+    cold_start: str = "random"
+    selection_seed_offset: int = 0
+    training_seed_offset: int = 10000
+    calibration_seed_offset: int = 20000
+    calibration_fraction: float = 0.2
+    calibration_min_images: int = 4
+
+
+class AcquisitionConfig(ConfigModel):
+    tie_break: str = "smallest_pool_id"
+    maxherding_sigma_rule: str = "median_pairwise_distance"
+    uherding_sigma_rule: str = "minimum_labeled_pairwise_distance"
+
+
+class TaskConfig(ConfigModel):
+    head: Literal["linear_1x1"] = "linear_1x1"
+    retrain_from_scratch: Literal[True] = True
+    epochs: int = Field(default=20, gt=0)
+    batch_size: int = Field(default=4, gt=0)
+    learning_rate: float = Field(default=0.001, gt=0, allow_inf_nan=False)
+    weight_decay: float = Field(default=0.0, ge=0, allow_inf_nan=False)
+
+
+class EncoderConfig(ConfigModel):
+    model_id: str = "facebook/dinov2-small"
+    revision: str = "ed25f3a31f01632728cabb09d1542f84ab7b0056"
+    image_size: int = Field(default=448, gt=0)
+    batch_size: int = Field(default=2, gt=0)
+
+
+class ExperimentConfig(ConfigModel):
+    seed: int = Field(default=42, ge=0)
+    budgets: list[int] = Field(default_factory=lambda: [21, 42, 84, 168, 336, 672])
+    data: DataConfig = Field(default_factory=DataConfig)
+    paths: PathsConfig = Field(default_factory=PathsConfig)
+    protocol: ProtocolConfig = Field(default_factory=ProtocolConfig)
+    acquisition: AcquisitionConfig = Field(default_factory=AcquisitionConfig)
+    task: TaskConfig = Field(default_factory=TaskConfig)
+    encoder: EncoderConfig = Field(default_factory=EncoderConfig)
+    tracking: TrackingConfig = Field(default_factory=TrackingConfig)
+    budget: int = Field(default=21, gt=0)
+    device: Literal["cpu", "cuda"] = "cuda"
+    run_dir: Path | None = None
+    smoke: bool = False
+
+    @model_validator(mode="after")
+    def resolve_smoke_recipe(self) -> Self:
+        if self.smoke:
+            self.task.epochs = 2
+        return self
+
+    def save(self, path: Path | str) -> Path:
+        """Save resolved values for a script invocation, excluding credentials."""
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(self.model_dump_json(indent=2) + "\n", encoding="utf-8")
+        return path
+
+    @classmethod
+    def load(
+        cls, path: Path | str | None = None, *, env_file: Path | None = None
+    ) -> Self:
+        config = (
+            cls.model_validate_json(Path(path).read_text(encoding="utf-8"))
+            if path
+            else cls()
+        )
+        if env_file is not None:
+            config.tracking = TrackingConfig(
+                _env_file=env_file, **config.tracking.model_dump()
+            )
+        return config
+
+
+def get_project_version(project_dir: Path = PROJECT_ROOT) -> str:
+    """Read package metadata; experiment defaults live in the classes above."""
+    with (project_dir / "pyproject.toml").open("rb") as file:
+        return tomllib.load(file)["project"]["version"]

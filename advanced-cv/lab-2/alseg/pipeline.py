@@ -10,7 +10,7 @@ import torch
 
 from alseg.adapters.dinov2 import DinoV2Encoder
 from alseg.adapters.voc import VocEvaluation, VocImages, VocOracle
-from alseg.config import PROJECT_ROOT, TrackingConfig, load_config
+from alseg.config import TrackingConfig, get_project_version
 from alseg.core.helpers import write_csv
 from alseg.core.pool import PoolManifest
 from alseg.core.predictions import IGNORE_INDEX, NUM_CLASSES
@@ -95,9 +95,7 @@ def _build_run_config(
         "training_seed": config["seed"] + config["protocol"]["training_seed_offset"],
         "val_images": min(8, len(manifest.val_ids)) if smoke else len(manifest.val_ids),
         "smoke": smoke,
-        "project_version": load_config(PROJECT_ROOT / "pyproject.toml")["project"][
-            "version"
-        ],
+        "project_version": get_project_version(),
         "runtime": {
             "device": device,
             "gpu": torch.cuda.get_device_name(0) if device == "cuda" else None,

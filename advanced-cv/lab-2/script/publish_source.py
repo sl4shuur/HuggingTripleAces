@@ -12,7 +12,7 @@ import rich_click as click
 from packaging.version import Version
 
 from alseg.cli_common import CONTEXT_SETTINGS
-from alseg.config import PROJECT_ROOT, load_config
+from alseg.config import PROJECT_ROOT, get_project_version
 
 
 def stage_source(project_dir: Path, output_dir: Path, dataset: str, title: str) -> dict:
@@ -22,15 +22,14 @@ def stage_source(project_dir: Path, output_dir: Path, dataset: str, title: str) 
     if not 6 <= len(title) <= 50:
         raise ValueError("Dataset title must contain 6..50 characters")
     project_dir = project_dir.resolve()
-    config = load_config(project_dir / "pyproject.toml")
-    version = config["project"]["version"]
+    version = get_project_version(project_dir)
     Version(version)
     paths = set()
     for pattern in (
         "alseg/**/*.py",
         "script/**/*.py",
         "tests/**/*.py",
-        "configs/**/*.toml",
+        "experiments/**/*.py",
     ):
         paths.update(project_dir.glob(pattern))
     for name in (

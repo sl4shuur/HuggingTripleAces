@@ -6,8 +6,6 @@ from typing import Any, TypeVar
 
 import rich_click as click
 
-from alseg.config import PROJECT_ROOT
-
 F = TypeVar("F", bound=Callable[..., Any])
 
 CONTEXT_SETTINGS = {
@@ -30,15 +28,14 @@ CONTEXT_SETTINGS = {
 
 
 def config_option(*, required: bool = False) -> Callable[[F], F]:
-    """Share the TOML config option across project entry points."""
+    """Share the optional JSON snapshot option; omitted means Python defaults."""
     return click.option(
         "--config",
         "config_path",
         type=click.Path(path_type=Path, exists=True, dir_okay=False),
         required=required,
-        default=None if required else PROJECT_ROOT / "configs" / "base.toml",
-        show_default=True,
-        help="Experiment configuration TOML.",
+        default=None,
+        help="Experiment configuration JSON; omitted means default ExperimentConfig.",
     )
 
 

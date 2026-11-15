@@ -7,14 +7,20 @@ from pathlib import Path
 import rich_click as click
 
 from alseg.cli_common import CONTEXT_SETTINGS, config_option
-from alseg.config import PROJECT_ROOT, TrackingConfig, load_config
+from alseg.config import ExperimentConfig
 
 
 @click.command(context_settings=CONTEXT_SETTINGS)
 @config_option()
-@click.option("--budget", type=click.IntRange(min=1), default=21, show_default=True)
 @click.option(
-    "--device", type=click.Choice(["cpu", "cuda"]), default="cuda", show_default=True
+    "--budget",
+    type=click.IntRange(min=1),
+    help="Override the configured annotation budget.",
+)
+@click.option(
+    "--device",
+    type=click.Choice(["cpu", "cuda"]),
+    help="Override the configured training device.",
 )
 @click.option(
     "--wandb-mode",
@@ -34,39 +40,54 @@ from alseg.config import PROJECT_ROOT, TrackingConfig, load_config
 @click.option(
     "--smoke",
     is_flag=True,
+    default=None,
     help="Use two epochs/eight val images; excluded from benchmark results.",
 )
 def main(
-    config_path: Path,
-    budget: int,
-    device: str,
+    config_path: Path | None,
+    budget: int | None,
+    device: str | None,
     wandb_mode: str | None,
     env_file: Path | None,
     output_dir: Path | None,
-    smoke: bool,
+    smoke: bool | None,
 ) -> None:
     """Train one Random-selected budget with fixed epochs and final evaluation."""
     from alseg.pipeline import run_training
 
     try:
-        config = load_config(config_path)
-        tracking = TrackingConfig(
-            _env_file=env_file or PROJECT_ROOT / ".env", **config["tracking"]
-        )
+        overrides = {
+            name: value
+            for name, value in {
+                "budget": budget,
+                "device": device,
+                "run_dir": output_dir,
+                "smoke": smoke,
+            }.items()
+            if value is not None
+        }
+        config = ExperimentConfig.load(config_path, env_file=env_file)
+        for name, value in overrides.items():
+            setattr(config, name, value)
         if wandb_mode:
-            tracking = tracking.model_copy(update={"mode": wandb_mode})
-        if smoke:
-            config["task"]["epochs"] = 2
-        output_dir = (
-            output_dir
-            or Path(config["paths"]["runs_dir"])
-            / f"random-{budget}-{uuid.uuid4().hex[:8]}"
+            config.tracking = config.tracking.model_copy(update={"mode": wandb_mode})
+        run_dir = config.run_dir or (
+            config.paths.runs_dir / f"random-{config.budget}-{uuid.uuid4().hex[:8]}"
         )
-        result = run_training(config, output_dir, budget, device, tracking, smoke=smoke)
+        resolved = config.model_dump(mode="json")
+        resolved["run_dir"] = str(run_dir)
+        result = run_training(
+            resolved,
+            run_dir,
+            config.budget,
+            config.device,
+            config.tracking,
+            smoke=config.smoke,
+        )
     except (OSError, ValueError, KeyError, TypeError) as error:
         raise click.ClickException(str(error)) from error
     click.echo(json.dumps(result, indent=2))
-    click.echo(f"Saved training run: {output_dir}")
+    click.echo(f"Saved training run: {run_dir}")
 
 
 if __name__ == "__main__":

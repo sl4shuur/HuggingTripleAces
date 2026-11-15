@@ -12,7 +12,7 @@ import torch
 from alseg.adapters.dinov2 import DinoV2Encoder
 from alseg.adapters.voc import VocImages
 from alseg.cli_common import CONTEXT_SETTINGS, config_option
-from alseg.config import PROJECT_ROOT, load_config
+from alseg.config import ExperimentConfig, get_project_version
 from alseg.data.voc import find_voc_root, load_manifest
 from alseg.nn.extraction import iter_features
 
@@ -20,7 +20,9 @@ from alseg.nn.extraction import iter_features
 @click.command(context_settings=CONTEXT_SETTINGS)
 @config_option()
 @click.option(
-    "--device", type=click.Choice(["cpu", "cuda"]), default="cuda", show_default=True
+    "--device",
+    type=click.Choice(["cpu", "cuda"]),
+    help="Override the configured device.",
 )
 @click.option(
     "--limit",
@@ -33,11 +35,16 @@ from alseg.nn.extraction import iter_features
     help="New artifact directory; defaults to a unique cache subdirectory.",
 )
 def main(
-    config_path: Path, device: str, limit: int | None, output_dir: Path | None
+    config_path: Path | None,
+    device: str | None,
+    limit: int | None,
+    output_dir: Path | None,
 ) -> None:
     """Save ID-aligned embeddings, preprocessing identity and runtime profiling."""
     try:
-        config = load_config(config_path)
+        experiment = ExperimentConfig.load(config_path)
+        device = device or experiment.device
+        config = experiment.model_dump(mode="json")
         if device == "cuda" and not torch.cuda.is_available():
             raise ValueError(
                 "CUDA is unavailable; enable a Kaggle GPU or use --device cpu"
@@ -102,9 +109,7 @@ def main(
             "torch": torch.__version__,
             "transformers": importlib.metadata.version("transformers"),
         }
-        report["project_version"] = load_config(PROJECT_ROOT / "pyproject.toml")[
-            "project"
-        ]["version"]
+        report["project_version"] = get_project_version()
         output_dir.mkdir(parents=True)
         torch.save({"ids": ids, "embeddings": embeddings}, output_dir / "embeddings.pt")
         (output_dir / "metadata.json").write_text(json.dumps(report, indent=2) + "\n")
