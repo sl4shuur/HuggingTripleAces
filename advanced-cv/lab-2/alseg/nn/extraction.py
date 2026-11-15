@@ -4,7 +4,8 @@ from collections.abc import Iterator
 
 from alseg.core.features import EncoderFeatures
 from alseg.core.helpers import check_ids
-from alseg.interfaces import Encoder, ImageSource
+from alseg.interfaces.data import ImageSource
+from alseg.interfaces.encoder import Encoder
 
 
 def iter_features(
