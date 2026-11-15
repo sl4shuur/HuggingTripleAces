@@ -48,10 +48,6 @@ def _validate_training_config(config: dict, device: str) -> None:
         raise ValueError("This task requires 21 classes and ignore_index=255")
 
 
-def _load_encoder(config: dict, device: str) -> Encoder:
-    return load_encoder(config["encoder"], Path(config["paths"]["cache_dir"]), device)
-
-
 def _prepare_labeled_features(
     config: dict, pool: ImageSource, oracle: Oracle, encoder: Encoder, ids: list[int]
 ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -78,33 +74,29 @@ def _build_run_config(
     tracking: TrackingConfig,
     manifest: PoolManifest,
     encoder: Encoder,
-    ids: list[int],
+    selection: dict,
     device: str,
     smoke: bool,
-    round_index: int,
-    new_ids: list[int],
-    fit_ids: list[int],
-    calibration_ids: list[int],
 ) -> dict:
     return {
         **config,
         "tracking": tracking.model_dump(mode="json"),
         "encoder_identity": encoder.describe(),
-        "budget": len(ids),
-        "round": round_index,
-        "n_new": len(new_ids),
-        "n_fit": len(fit_ids),
-        "n_calibration": len(calibration_ids),
-        "selected_ids": ids,
-        "new_ids": new_ids,
-        "fit_ids": fit_ids,
-        "calibration_ids": calibration_ids,
+        "budget": selection["budget"],
+        "round": selection["round"],
+        "n_new": len(selection["new_ids"]),
+        "n_fit": len(selection["fit_ids"]),
+        "n_calibration": len(selection["calibration_ids"]),
+        "selected_ids": selection["ids"],
+        "new_ids": selection["new_ids"],
+        "fit_ids": selection["fit_ids"],
+        "calibration_ids": selection["calibration_ids"],
         "pool_ids": manifest.pool_ids,
         "val_ids": manifest.val_ids,
         **{
             f"{stream}_seed": config["seed"]
             + config["protocol"][f"{stream}_seed_offset"]
-            + round_index
+            + selection["round"]
             for stream in ("selection", "training", "calibration")
         },
         "val_images": min(8, len(manifest.val_ids)) if smoke else len(manifest.val_ids),
@@ -116,7 +108,7 @@ def _build_run_config(
             "torch": torch.__version__,
             **{
                 name: importlib.metadata.version(name)
-                for name in ("lightning", "wandb", "transformers")
+                for name in ("lightning", "wandb", "transformers", "timm")
             },
             "precision": "32-true",
         },
@@ -209,6 +201,100 @@ def run_experiment(
     return _run_random(config, run_dir, config["budgets"], device, tracking, smoke)
 
 
+def _query_round(
+    config: dict,
+    oracle: Oracle,
+    unlabeled_ids: list[int],
+    round_index: int,
+    budget: int,
+    single: bool,
+) -> dict:
+    """Acquire only missing labels and split the cumulative queried set."""
+    protocol = config["protocol"]
+    seed = config["seed"] + protocol["selection_seed_offset"] + round_index
+    order = torch.randperm(
+        len(unlabeled_ids), generator=torch.Generator().manual_seed(seed)
+    )
+    n_new = budget - len(oracle.labeled_ids)
+    new_ids = [unlabeled_ids[i] for i in order[:n_new].tolist()]
+    oracle.query(new_ids)
+    labeled_ids = oracle.labeled_ids
+    fit_ids, calibration_ids = labeled_ids, []
+    if not single:
+        fit_ids, calibration_ids = split_labeled_ids(
+            labeled_ids,
+            protocol["calibration_fraction"],
+            protocol["calibration_min_images"],
+            config["seed"] + protocol["calibration_seed_offset"] + round_index,
+        )
+    return {
+        "round": round_index,
+        "budget": budget,
+        "new_ids": new_ids,
+        "ids": labeled_ids,
+        "unlabeled_ids": sorted(set(unlabeled_ids) - set(new_ids)),
+        "fit_ids": fit_ids,
+        "calibration_ids": calibration_ids,
+    }
+
+
+def _run_round(
+    config: dict,
+    tracking: TrackingConfig,
+    pool: ImageSource,
+    oracle: Oracle,
+    encoder: Encoder,
+    evaluation: VocEvaluation,
+    run_dir: Path,
+    selection_seconds: float,
+) -> dict:
+    """Extract fit features, train a fresh head, evaluate val and save round artifacts."""
+    start = time.perf_counter()
+    features, targets = _prepare_labeled_features(
+        config, pool, oracle, encoder, config["fit_ids"]
+    )
+    timings = {
+        "selection_seconds": selection_seconds,
+        "feature_seconds": time.perf_counter() - start,
+    }
+    name = f"{config['experiment_name']}-b{config['budget']}"
+    with wandb_run(tracking, run_dir, name, config) as logger:
+        start = time.perf_counter()
+        head = _fit_and_save_head(features, targets, config, run_dir, logger)
+        timings["train_seconds"] = time.perf_counter() - start
+        del features, targets
+        start = time.perf_counter()
+        metrics, previews = evaluate_head(
+            head,
+            encoder,
+            evaluation,
+            list(range(config["val_images"])),
+            config["encoder"]["batch_size"],
+            config["runtime"]["device"],
+        )
+        timings["eval_seconds"] = time.perf_counter() - start
+        result = _save_results(run_dir, config, metrics, timings)
+        if logger:
+            logger.log_metrics({f"perf/{key}": value for key, value in timings.items()})
+        log_run_artifacts(logger, run_dir, metrics, previews)
+    return result
+
+
+def _save_round_inputs(
+    run_dir: Path,
+    round_dir: Path,
+    config: dict,
+    selection: dict,
+    selections: list[dict],
+) -> None:
+    """Persist queried IDs before any training starts."""
+    round_dir.mkdir(exist_ok=round_dir == run_dir)
+    write_json(round_dir / "config.json", config)
+    write_json(round_dir / "selection.json", selection)
+    write_json(run_dir / "selections.json", selections)
+    write_json(run_dir / "state.json", {**selection, "status": "queried"})
+
+
 def _run_random(
     config: dict,
     run_dir: Path,
@@ -242,7 +328,9 @@ def _run_random(
         raise ValueError(
             "Use a new output directory; existing artifacts are never overwritten"
         )
-    encoder = _load_encoder(config, device)
+    encoder = load_encoder(
+        config["encoder"], Path(config["paths"]["cache_dir"]), device
+    )
     run_dir.mkdir(parents=True, exist_ok=False)
     oracle = VocOracle(root, manifest, run_dir / "oracle_queries.jsonl")
     manifest_data = {"pool_ids": manifest.pool_ids, "val_ids": manifest.val_ids}
@@ -256,103 +344,39 @@ def _run_random(
             {**config, "tracking": tracking.model_dump(mode="json")},
         )
     evaluation = VocEvaluation(root, manifest)
-    labeled_ids, unlabeled_ids = [], list(range(len(pool)))
+    unlabeled_ids = list(range(len(pool)))
     results, selections = [], []
     for round_index, budget in enumerate(budgets):
         start = time.perf_counter()
-        seed = (
-            config["seed"] + config["protocol"]["selection_seed_offset"] + round_index
+        selection = _query_round(
+            config, oracle, unlabeled_ids, round_index, budget, single
         )
-        order = torch.randperm(
-            len(unlabeled_ids), generator=torch.Generator().manual_seed(seed)
-        )
-        new_ids = [
-            unlabeled_ids[i] for i in order[: budget - len(labeled_ids)].tolist()
-        ]
-        oracle.query(new_ids)
-        labeled_ids = oracle.labeled_ids
-        unlabeled_ids = sorted(set(unlabeled_ids) - set(new_ids))
-        calibration_seed = (
-            config["seed"] + config["protocol"]["calibration_seed_offset"] + round_index
-        )
-        fit_ids, calibration_ids = (
-            (labeled_ids, [])
-            if single
-            else split_labeled_ids(
-                labeled_ids,
-                config["protocol"]["calibration_fraction"],
-                config["protocol"]["calibration_min_images"],
-                calibration_seed,
-            )
-        )
-        timings = {"selection_seconds": time.perf_counter() - start}
+        unlabeled_ids = selection["unlabeled_ids"]
+        selection["stems"] = [manifest.pool_ids[i] for i in selection["ids"]]
+        selection_seconds = time.perf_counter() - start
         round_dir = (
             run_dir if single else run_dir / f"round-{round_index:02d}-budget-{budget}"
         )
-        if not single:
-            round_dir.mkdir()
         run_config = _build_run_config(
-            config,
-            tracking,
-            manifest,
-            encoder,
-            labeled_ids,
-            device,
-            smoke,
-            round_index,
-            new_ids,
-            fit_ids,
-            calibration_ids,
+            config, tracking, manifest, encoder, selection, device, smoke
         )
         run_config["manifest_sha256"] = manifest_hash
         run_config["experiment_name"] = run_dir.name
-        write_json(round_dir / "config.json", run_config)
-        selection = {
-            "round": round_index,
-            "budget": budget,
-            "new_ids": new_ids,
-            "ids": labeled_ids,
-            "stems": [manifest.pool_ids[i] for i in labeled_ids],
-            "unlabeled_ids": unlabeled_ids,
-            "fit_ids": fit_ids,
-            "calibration_ids": calibration_ids,
-        }
         selections.append(selection)
-        write_json(round_dir / "selection.json", selection)
-        write_json(run_dir / "selections.json", selections)
-        write_json(run_dir / "state.json", {**selection, "status": "queried"})
-        start = time.perf_counter()
-        features, targets = _prepare_labeled_features(
-            config, pool, oracle, encoder, fit_ids
+        _save_round_inputs(run_dir, round_dir, run_config, selection, selections)
+        result = _run_round(
+            run_config,
+            tracking,
+            pool,
+            oracle,
+            encoder,
+            evaluation,
+            round_dir,
+            selection_seconds,
         )
-        timings["feature_seconds"] = time.perf_counter() - start
-        with wandb_run(
-            tracking, round_dir, f"{run_dir.name}-b{budget}", run_config
-        ) as logger:
-            start = time.perf_counter()
-            head = _fit_and_save_head(features, targets, run_config, round_dir, logger)
-            timings["train_seconds"] = time.perf_counter() - start
-            del features, targets
-            start = time.perf_counter()
-            metrics, previews = evaluate_head(
-                head,
-                encoder,
-                evaluation,
-                list(range(run_config["val_images"])),
-                config["encoder"]["batch_size"],
-                device,
-            )
-            timings["eval_seconds"] = time.perf_counter() - start
-            result = _save_results(round_dir, run_config, metrics, timings)
-            results.append(result)
-            write_csv(run_dir / "results.csv", results)
-            write_json(run_dir / "state.json", {**selection, "status": "completed"})
-            if logger:
-                logger.log_metrics(
-                    {f"perf/{name}": value for name, value in timings.items()}
-                )
-            log_run_artifacts(logger, round_dir, metrics, previews)
-            del head
+        results.append(result)
+        write_csv(run_dir / "results.csv", results)
+        write_json(run_dir / "state.json", {**selection, "status": "completed"})
     if not single:
         log_experiment_history(tracking, run_dir, run_config, results)
     return results

@@ -24,8 +24,8 @@ class ViT16Encoder(Encoder):
     def encode(self, images: list[Tensor]) -> EncoderFeatures:
         self.model.eval()
         pixels = prepare_images(images, self.image_size).to(self.device)
-        tokens = self.model(pixel_values=pixels).last_hidden_state
-        grid, dim = self.image_size // 16, self.model.config.hidden_size
+        tokens = self.model.forward_features(pixels)
+        grid, dim = self.image_size // 16, self.model.num_features
         if tokens.shape[1:] != (1 + grid * grid, dim):
             raise ValueError("Unexpected ViT CLS/patch token layout")
         patches = tokens[:, 1:].transpose(1, 2).reshape(len(images), dim, grid, grid)
@@ -37,7 +37,7 @@ class ViT16Encoder(Encoder):
     def describe(self) -> dict:
         return {
             **self.identity,
-            "feature_dim": self.model.config.hidden_size,
+            "feature_dim": self.model.num_features,
             "patch_size": 16,
             "image_size": self.image_size,
             "image_pooling": "l2_normalized_cls",

@@ -104,6 +104,7 @@ def main(
             "device": device,
             "torch": torch.__version__,
             "transformers": importlib.metadata.version("transformers"),
+            "timm": importlib.metadata.version("timm"),
         }
         report["project_version"] = get_project_version()
         output_dir.mkdir(parents=True)

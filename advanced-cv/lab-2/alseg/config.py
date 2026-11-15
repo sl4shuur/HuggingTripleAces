@@ -1,6 +1,7 @@
 """Experiment defaults, validation and JSON snapshots shared by all entry points."""
 
 import tomllib
+from enum import StrEnum
 from itertools import pairwise
 from pathlib import Path
 from typing import Literal, Self
@@ -88,8 +89,14 @@ class TaskConfig(ConfigModel):
     weight_decay: float = Field(default=0.0, ge=0, allow_inf_nan=False)
 
 
+class EncoderName(StrEnum):
+    DINOV2 = "dinov2"
+    DINO_VITB16 = "dino_vitb16"
+    IBOT_VITB16 = "ibot_vitb16"
+
+
 class EncoderConfig(ConfigModel):
-    name: Literal["dinov2", "dino_vitb16", "ibot_vitb16"] = "dinov2"
+    name: EncoderName = EncoderName.DINO_VITB16
     model_id: str = "facebook/dinov2-small"
     revision: str = "ed25f3a31f01632728cabb09d1542f84ab7b0056"
     image_size: int = Field(default=448, gt=0)
@@ -98,9 +105,9 @@ class EncoderConfig(ConfigModel):
 
     @model_validator(mode="after")
     def validate_checkpoint(self) -> Self:
-        if self.name != "dinov2" and self.image_size % 16:
+        if self.name != EncoderName.DINOV2 and self.image_size % 16:
             raise ValueError("DINO/iBOT image_size must be a multiple of patch_size=16")
-        if self.name == "dinov2" and self.checkpoint_path is not None:
+        if self.name == EncoderName.DINOV2 and self.checkpoint_path is not None:
             raise ValueError("checkpoint_path is supported only for DINO/iBOT ViT-B/16")
         return self
 
