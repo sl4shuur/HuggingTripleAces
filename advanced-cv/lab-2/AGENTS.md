@@ -16,3 +16,10 @@
 - Keep source on the read-only Kaggle input mount. Write caches, test scratch files, and run outputs only under `/kaggle/working/` or a temporary directory.
 - Use the same source dataset version, project version, and experiment config for both teammates. Restart the kernel after switching source dataset versions.
 - Never commit a Kaggle Jupyter server URL or access token.
+
+## Verification
+
+- Keep checks lightweight: prefer syntax/lint checks and small, focused tests.
+- Do not add elaborate test fixtures or integration harnesses for routine changes.
+- Do not run training, download checkpoints for verification, or run GPU smoke tests, benchmarks, or repeated smoke runs unless the user explicitly requests them.
+- The user validates actual experiment runs and reports runtime errors for follow-up fixes. State clearly what was not verified.

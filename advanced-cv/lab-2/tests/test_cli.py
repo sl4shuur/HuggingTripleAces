@@ -86,3 +86,41 @@ def test_training_cli_honors_file_values_and_explicit_overrides(tmp_path, monkey
     result = CliRunner().invoke(train, args + ["--budget", "9"])
     assert result.exit_code == 0, result.output
     assert calls[-1] == (9, "cpu", 3)
+
+
+def test_experiment_cli_runs_configured_sequence_and_overrides(tmp_path, monkeypatch):
+    pytest.importorskip("lightning")
+    from alseg import pipeline
+    from script.run_experiment import main as experiment
+
+    path = ExperimentConfig(
+        budgets=[21, 42],
+        encoder={"name": "ibot_vitb16"},
+        device="cpu",
+        task={"epochs": 3},
+    ).save(tmp_path / "experiment.json")
+    calls = []
+
+    def record(config, run_dir, device, tracking, **kwargs):
+        calls.append((config, run_dir, device, tracking, kwargs))
+        return [{"budget": b} for b in config["budgets"]]
+
+    monkeypatch.setattr(pipeline, "run_experiment", record)
+    result = CliRunner().invoke(
+        experiment,
+        [
+            "--config",
+            str(path),
+            "--wandb-mode",
+            "disabled",
+            "--smoke",
+            "--output-dir",
+            str(tmp_path / "run"),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    config, run_dir, device, tracking, kwargs = calls[0]
+    assert config["budgets"] == [21, 42] and config["task"]["epochs"] == 2
+    assert config["encoder"]["name"] == "ibot_vitb16"
+    assert device == "cpu" and tracking.mode == "disabled" and kwargs["smoke"]
+    assert run_dir == tmp_path / "run"

@@ -9,6 +9,7 @@ pytest.importorskip("transformers")
 from transformers import Dinov2Config, Dinov2Model
 
 from alseg.adapters.dinov2 import DinoV2Encoder
+from alseg.config import EncoderConfig, EncoderName, ExperimentConfig
 from alseg.core.pool import PoolManifest
 from alseg.data.preprocessing import prepare_images
 from alseg.interfaces.data import ImageSource
@@ -106,7 +107,19 @@ def test_cli_saves_subset_identity_and_refuses_overwrite(
         DinoV2Encoder, "from_pretrained", lambda *args, **kwargs: encoder
     )
     output = tmp_path / "features"
-    args = ["--device", "cpu", "--limit", "2", "--output-dir", str(output)]
+    config_path = ExperimentConfig(encoder=EncoderConfig(name=EncoderName.DINOV2)).save(
+        tmp_path / "config.json"
+    )
+    args = [
+        "--config",
+        str(config_path),
+        "--device",
+        "cpu",
+        "--limit",
+        "2",
+        "--output-dir",
+        str(output),
+    ]
     result = CliRunner().invoke(extract_features.main, args)
     assert result.exit_code == 0, result.output
     saved = torch.load(output / "embeddings.pt", weights_only=True)

@@ -61,9 +61,10 @@ def test_offline_wandb_records_training_media_and_artifacts(tmp_path, monkeypatc
     monkeypatch.setenv("WANDB_CACHE_DIR", str(tmp_path / "cache"))
     config = TrackingConfig(mode="offline")
     with wandb_run(
-        config, tmp_path, "offline-test", {"tracking": config.model_dump()}
+        config, tmp_path, "offline-test", {"tracking": config.model_dump(), "budget": 2}
     ) as logger:
         assert logger.experiment.entity == "public-team"
+        assert logger.experiment.config["budget"] == 2
         task = fit_head(
             torch.ones(2, 3, 2, 2),
             torch.zeros(2, 4, 4, dtype=torch.long),

@@ -105,6 +105,16 @@ def test_notebook_config_merges_sections_without_changing_shared_defaults():
         {"task": {"learning_rate": -0.1}},
         {"task": {"batchsize": 2}},
         {"device": "gpu"},
+        {"budgets": []},
+        {"budgets": [21, 21]},
+        {"budgets": [42, 21]},
+        {"budgets": [0, 21]},
+        {"protocol": {"calibration_fraction": 1}},
+        {"protocol": {"calibration_min_images": -1}},
+        {"encoder": {"name": "ibot_segmentation"}},
+        {"encoder": {"name": "dino_vitb16", "image_size": 225}},
+        {"encoder": {"name": "dinov2", "checkpoint_path": "/tmp/unsupported.pth"}},
+        {"seed": 2**63},
     ],
 )
 def test_notebook_config_rejects_invalid_values_and_misspelled_fields(overrides):
@@ -150,3 +160,12 @@ def test_experiment_instances_do_not_share_mutable_defaults():
     assert second.task.epochs != first.task.epochs
     assert 1000 not in second.budgets
     assert second.data.voc_root == ""
+
+
+def test_encoder_enum_round_trips_as_a_json_string():
+    experiment = config.ExperimentConfig(
+        encoder=config.EncoderConfig(name=config.EncoderName.DINO_VITB16)
+    )
+    assert experiment.model_dump(mode="json")["encoder"]["name"] == "dino_vitb16"
+    restored = config.ExperimentConfig.model_validate_json(experiment.model_dump_json())
+    assert restored.encoder.name is config.EncoderName.DINO_VITB16
