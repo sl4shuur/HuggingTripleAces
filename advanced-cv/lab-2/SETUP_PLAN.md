@@ -2,7 +2,7 @@
 
 Person 1 owns data, frozen encoders, segmentation training, evaluation, and the experiment runner. Person 2 owns uncertainty estimation, MaxHerding, UHerding, and adaptive acquisition parameters. Both parts use one contract and one runner so results remain comparable.
 
-Requirements were checked against the local assignment PDF. Settings that are not prescribed by the assignment are proposed team conventions to freeze before the benchmark. Step 0 below is implemented; subsequent steps are planned.
+Requirements were checked against the local assignment PDF. Settings that are not prescribed by the assignment are proposed team conventions to freeze before the benchmark. Step 0 and the data/oracle portion of step 1 are implemented. The next milestone is one frozen encoder, a segmentation head, metrics, and two Random smoke rounds.
 
 ## 1. Agree on the shared protocol
 
@@ -37,8 +37,8 @@ advanced-cv/lab-2/
       scores.py           # Canonical score alignment
       helpers.py       # Shared tensor/ID checks
     interfaces.py         # ABC boundaries
-    data.py               # VOC discovery and file preflight
-    adapters/             # Planned: interface implementation classes only
+    data.py               # VOC discovery, image/mask decoding and diagnostics
+    adapters/voc.py       # VocImages, VocEvaluation, VocOracle implementations
     pipeline.py           # Planned: experiment orchestration
     metrics.py            # Planned: evaluation
   tests/
