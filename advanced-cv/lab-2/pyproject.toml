@@ -13,7 +13,7 @@ dependencies = ["torch>=2.3,<3", "rich-click>=1.8,<2", "numpy>=1.26", "Pillow>=1
 test = ["pytest>=8,<10"]
 encoder = ["transformers==5.20.2"]
 train = ["lightning==2.6.6", "wandb==0.28.1"]
-publish = ["kaggle==2.2.5", "packaging>=24"]
+publish = ["kaggle==2.2.5", "packaging>=24", "six>=1.17,<2"]
 
 [tool.setuptools.packages.find]
 include = ["alseg*", "script*"]
