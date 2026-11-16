@@ -79,6 +79,8 @@ def test_random_rounds_query_only_new_ids(voc, tmp_path):
     first = _query_round(config, oracle, [0, 1], 0, 1)
     second = _query_round(config, oracle, first["unlabeled_ids"], 1, 2)
     assert len(first["new_ids"]) == len(second["new_ids"]) == 1
+    assert first["acquisition"]["acquisition_budget"] == 0
+    assert second["acquisition"]["acquisition_budget"] == 1
     assert set(first["new_ids"]).isdisjoint(second["new_ids"])
     assert sorted(second["ids"]) == [0, 1]
     assert second["unlabeled_ids"] == []
@@ -118,7 +120,7 @@ def test_run_training_composes_stages_without_fitting_or_inference(
         assert not hasattr(pool, "get_mask")
         return torch.ones(2, 3, 2, 2), torch.zeros(2, 4, 4, dtype=torch.long)
 
-    monkeypatch.setattr(pipeline, "_prepare_labeled_features", prepare)
+    monkeypatch.setattr(pipeline, "prepare_labeled_features", prepare)
     head = torch.nn.Conv2d(3, 21, 1)
     monkeypatch.setattr(
         pipeline,
@@ -168,7 +170,7 @@ def test_failed_round_preserves_completed_metrics_and_query_state(
     )
     monkeypatch.setattr(
         pipeline,
-        "_prepare_labeled_features",
+        "prepare_labeled_features",
         lambda *args: (
             torch.ones(len(args[-1]), 3, 2, 2),
             torch.zeros(len(args[-1]), 4, 4, dtype=torch.long),

@@ -1,8 +1,9 @@
-"""Compose cumulative Random acquisition, fresh-head training and val reporting."""
+"""Compose cumulative acquisition, fresh-head training and val reporting."""
 
 import importlib.metadata
 import os
 import time
+from collections.abc import Callable
 from itertools import pairwise
 from pathlib import Path
 
@@ -10,7 +11,7 @@ import torch
 
 from alseg.adapters.voc import VocEvaluation, VocImages, VocOracle
 from alseg.config import TrackingConfig, get_project_version
-from alseg.core.helpers import write_csv, write_json
+from alseg.core.helpers import check_ids, write_csv, write_json
 from alseg.core.pool import PoolManifest
 from alseg.core.predictions import IGNORE_INDEX, NUM_CLASSES
 from alseg.core.selection import AcquisitionMethod
@@ -45,13 +46,14 @@ def _validate_training_config(config: dict, device: str) -> None:
         raise ValueError("This task requires 21 classes and ignore_index=255")
 
 
-def _prepare_labeled_features(
+def prepare_labeled_features(
     config: dict,
     pool: ImageSource,
     oracle: Oracle,
     encoder: FeatureSource,
     ids: list[int],
 ) -> tuple[torch.Tensor, torch.Tensor]:
+    """Prepare patch features and previously queried masks in the supplied ID order."""
     encoder_config = config["encoder"]
     features = torch.cat(
         [
@@ -92,6 +94,7 @@ def _build_run_config(
         "new_ids": selection["new_ids"],
         "fit_ids": selection["fit_ids"],
         "calibration_ids": selection["calibration_ids"],
+        "acquisition_metadata": selection["acquisition"],
         "pool_ids": manifest.pool_ids,
         "val_ids": manifest.val_ids,
         **{
@@ -120,8 +123,16 @@ def _save_results(
     run_dir: Path, run_config: dict, metrics: dict, timings: dict
 ) -> dict:
     write_json(run_dir / "metrics.json", metrics)
+    acquisition = run_config["acquisition_metadata"]
     result = {
-        "method": AcquisitionMethod.RANDOM.value,
+        "method": acquisition["method"],
+        "selection_method": acquisition["selection_method"],
+        "acquisition_budget": acquisition["acquisition_budget"],
+        "acquisition_n_fit": len(acquisition.get("calibration_fit_ids", [])),
+        "acquisition_n_calibration": len(acquisition.get("calibration_ids", [])),
+        "sigma_used": acquisition.get("sigma"),
+        "tau_used": acquisition.get("tau", 1.0),
+        "fallback": acquisition.get("fallback"),
         "encoder": run_config["encoder_identity"].get(
             "name", run_config["encoder_identity"].get("model_id")
         ),
@@ -186,9 +197,9 @@ def run_training(
     smoke: bool = False,
 ) -> dict:
     """Legacy single-budget recipe: fit all L, without a calibration holdout."""
-    return _run_random(config, run_dir, [budget], device, tracking, smoke, single=True)[
-        0
-    ]
+    return _run_experiment(
+        config, run_dir, [budget], device, tracking, smoke, single=True
+    )[0]
 
 
 def run_experiment(
@@ -197,9 +208,25 @@ def run_experiment(
     device: str,
     tracking: TrackingConfig,
     smoke: bool = False,
+    *,
+    acquisition: Callable[..., tuple[list[int], dict]] | None = None,
 ) -> list[dict]:
-    """Keep one pool/oracle across budgets; train each reporting head on all queried L."""
-    return _run_random(config, run_dir, config["budgets"], device, tracking, smoke)
+    """Train every reporting head on all queried L, regardless of acquisition.
+
+    The optional acquisition callback receives keyword arguments config, pool,
+    oracle, encoder, round_index and the cumulative target budget. It returns
+    (new_ids, metadata), without calling Oracle.query or mutating its inputs.
+    It may read only previously queried masks through oracle.get_mask.
+    """
+    return _run_experiment(
+        config,
+        run_dir,
+        config["budgets"],
+        device,
+        tracking,
+        smoke,
+        acquisition=acquisition,
+    )
 
 
 def _query_round(
@@ -208,15 +235,40 @@ def _query_round(
     unlabeled_ids: list[int],
     round_index: int,
     budget: int,
+    *,
+    acquisition_result: tuple[list[int], dict] | None = None,
 ) -> dict:
-    """Acquire only missing labels; Random needs no calibration head."""
-    protocol = config["protocol"]
-    seed = config["seed"] + protocol["selection_seed_offset"] + round_index
-    order = torch.randperm(
-        len(unlabeled_ids), generator=torch.Generator().manual_seed(seed)
-    )
-    n_new = budget - len(oracle.labeled_ids)
-    new_ids = [unlabeled_ids[i] for i in order[:n_new].tolist()]
+    """Validate the entire selection before querying; reporting always fits all L."""
+    previous_budget = len(oracle.labeled_ids)
+    n_new = budget - previous_budget
+    if not 0 < n_new <= len(unlabeled_ids):
+        raise ValueError("budget must add labels without exceeding the unlabeled pool")
+    if acquisition_result is None:
+        protocol = config["protocol"]
+        seed = config["seed"] + protocol["selection_seed_offset"] + round_index
+        order = torch.randperm(
+            len(unlabeled_ids), generator=torch.Generator().manual_seed(seed)
+        )
+        new_ids = [unlabeled_ids[i] for i in order[:n_new].tolist()]
+        metadata = {"method": AcquisitionMethod.RANDOM.value}
+    else:
+        new_ids, metadata = acquisition_result
+    check_ids(new_ids, "selected_ids")
+    if len(new_ids) != n_new:
+        raise ValueError("Acquisition returned the wrong number of new IDs")
+    if not set(new_ids) <= set(unlabeled_ids):
+        raise ValueError("Acquisition returned an already-labeled or out-of-pool ID")
+    if not isinstance(metadata, dict):
+        raise ValueError("Acquisition metadata must be a dictionary")
+    method = AcquisitionMethod(
+        metadata.get("method", config["acquisition"]["method"])
+    ).value
+    metadata = {
+        "method": method,
+        "selection_method": method,
+        "acquisition_budget": previous_budget,
+        **metadata,
+    }
     oracle.query(new_ids)
     labeled_ids = oracle.labeled_ids
     return {
@@ -227,6 +279,7 @@ def _query_round(
         "unlabeled_ids": sorted(set(unlabeled_ids) - set(new_ids)),
         "fit_ids": labeled_ids,
         "calibration_ids": [],
+        "acquisition": metadata,
     }
 
 
@@ -242,7 +295,7 @@ def _run_round(
 ) -> dict:
     """Extract fit features, train a fresh head, evaluate val and save round artifacts."""
     start = time.perf_counter()
-    features, targets = _prepare_labeled_features(
+    features, targets = prepare_labeled_features(
         config, pool, oracle, encoder, config["fit_ids"]
     )
     timings = {
@@ -287,7 +340,7 @@ def _save_round_inputs(
     write_json(run_dir / "state.json", {**selection, "status": "queried"})
 
 
-def _run_random(
+def _run_experiment(
     config: dict,
     run_dir: Path,
     budgets: list[int],
@@ -296,7 +349,16 @@ def _run_random(
     smoke: bool,
     *,
     single: bool = False,
+    acquisition: Callable[..., tuple[list[int], dict]] | None = None,
 ) -> list[dict]:
+    config = {**config, "device": device}
+    if (
+        not single
+        and acquisition is None
+        and AcquisitionMethod(config["acquisition"]["method"])
+        != AcquisitionMethod.RANDOM
+    ):
+        raise ValueError("Non-random acquisition requires an acquisition callback")
     tracking = configure_tracking(tracking)
     _validate_training_config(config, device)
     os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
@@ -338,7 +400,28 @@ def _run_random(
     results, selections = [], []
     for round_index, budget in enumerate(budgets):
         start = time.perf_counter()
-        selection = _query_round(config, oracle, unlabeled_ids, round_index, budget)
+        acquisition_result = (
+            acquisition(
+                config=config,
+                pool=pool,
+                oracle=oracle,
+                encoder=encoder,
+                round_index=round_index,
+                budget=budget,
+            )
+            if acquisition is not None
+            else None
+        )
+        if acquisition is not None and acquisition_result is None:
+            raise ValueError("Acquisition must return (selected_ids, metadata)")
+        selection = _query_round(
+            config,
+            oracle,
+            unlabeled_ids,
+            round_index,
+            budget,
+            acquisition_result=acquisition_result,
+        )
         unlabeled_ids = selection["unlabeled_ids"]
         selection["stems"] = [manifest.pool_ids[i] for i in selection["ids"]]
         selection_seconds = time.perf_counter() - start

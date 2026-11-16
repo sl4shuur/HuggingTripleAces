@@ -111,6 +111,13 @@ def test_notebook_config_merges_sections_without_changing_shared_defaults():
         {"budgets": [0, 21]},
         {"protocol": {"calibration_fraction": 1}},
         {"protocol": {"calibration_min_images": -1}},
+        {"acquisition": {"method": "unsupported"}},
+        {"acquisition": {"uncertainty_method": "unsupported"}},
+        {"acquisition": {"temperatures": []}},
+        {"acquisition": {"temperatures": [0]}},
+        {"acquisition": {"temperatures": [float("inf")]}},
+        {"acquisition": {"temperatures": [float("nan")]}},
+        {"acquisition": {"ece_bins": 0}},
         {"encoder": {"name": "ibot_segmentation"}},
         {"encoder": {"name": "dino_vitb16", "image_size": 225}},
         {"encoder": {"name": "dinov2", "checkpoint_path": "/tmp/unsupported.pth"}},
@@ -160,6 +167,19 @@ def test_experiment_instances_do_not_share_mutable_defaults():
     assert second.task.epochs != first.task.epochs
     assert 1000 not in second.budgets
     assert second.data.voc_root == ""
+
+
+def test_acquisition_method_defaults_to_random_and_round_trips():
+    from alseg.core.selection import AcquisitionMethod
+
+    assert config.AcquisitionConfig().method is AcquisitionMethod.RANDOM
+    experiment = config.ExperimentConfig(acquisition={"method": "uherding"})
+    assert experiment.model_dump(mode="json")["acquisition"]["method"] == "uherding"
+    restored = config.ExperimentConfig.model_validate_json(experiment.model_dump_json())
+    assert restored.acquisition.method is AcquisitionMethod.UHERDING
+    assert restored.acquisition.uncertainty_method == "margin"
+    assert restored.acquisition.temperatures == (0.25, 0.5, 1.0, 2.0, 4.0, 8.0)
+    assert restored.acquisition.ece_bins == 5
 
 
 def test_encoder_enum_round_trips_as_a_json_string():

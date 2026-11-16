@@ -4,13 +4,15 @@ import tomllib
 from enum import StrEnum
 from itertools import pairwise
 from pathlib import Path
-from typing import Literal, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from rich.console import Console
 from rich.pretty import Pretty
 from rich.table import Table
+
+from alseg.core.selection import AcquisitionMethod
 
 
 def _project_root() -> Path:
@@ -75,6 +77,12 @@ class ProtocolConfig(ConfigModel):
 
 
 class AcquisitionConfig(ConfigModel):
+    method: AcquisitionMethod = AcquisitionMethod.RANDOM
+    uncertainty_method: Literal["margin", "entropy"] = "margin"
+    temperatures: tuple[Annotated[float, Field(gt=0, allow_inf_nan=False)], ...] = (
+        Field(default=(0.25, 0.5, 1.0, 2.0, 4.0, 8.0), min_length=1)
+    )
+    ece_bins: int = Field(default=5, gt=0)
     tie_break: str = "smallest_pool_id"
     maxherding_sigma_rule: str = "median_pairwise_distance"
     uherding_sigma_rule: str = "minimum_labeled_pairwise_distance"

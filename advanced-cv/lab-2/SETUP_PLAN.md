@@ -2,7 +2,7 @@
 
 Person 1 owns data, frozen encoders, segmentation training, evaluation, and the experiment runner. Person 2 owns uncertainty estimation, MaxHerding, UHerding, and adaptive acquisition parameters. Both parts use one contract and one runner so results remain comparable.
 
-Requirements were checked against the local assignment PDF. Settings that are not prescribed by the assignment are proposed team conventions to freeze before the benchmark. Step 0 and the data/oracle portion of step 1 are implemented. A first frozen DINOv2 encoder and image/patch extraction are also implemented. A segmentation head, Lightning training, mIoU, W&B, cumulative Random rounds, and a shared fit/calibration split are implemented. DINO and iBOT ViT-B/16 use pinned ImageNet-1K teacher backbone weights. The next milestone is batch inference and teammate scoring/calibration integration.
+Requirements were checked against the local assignment PDF. Settings that are not prescribed by the assignment are proposed team conventions to freeze before the benchmark. Step 0 and the data/oracle portion of step 1 are implemented. A first frozen DINOv2 encoder and image/patch extraction are also implemented. A segmentation head, Lightning training, mIoU, W&B, cumulative acquisition rounds, and a shared fit/calibration split are implemented. DINO and iBOT ViT-B/16 use pinned ImageNet-1K teacher backbone weights. The parent notebook now supplies scoring/calibration and all four acquisition methods through the shared runner's callback. Actual experiment runs remain user-validated.
 
 ## 1. Agree on the shared protocol
 
@@ -157,7 +157,7 @@ The geometry mask must not depend on hidden segmentation labels, including void=
 
 `CalibrationBatch` adds int64 `[B,H,W]` targets from a held-out subset of queried L only. Ignore 255 in ECE; padding targets must be 255. Types validate shapes/values, but the runner remains responsible for ensuring calibration IDs belong to queried L and were excluded from model fitting.
 
-Agreed calibration protocol: every reporting head trains from scratch on all queried L, identically for all four methods. Before a model-based query, split the previous L deterministically into fit/calibration using canonical IDs and the fixed calibration seed. Train an auxiliary acquisition head on fit only; choose its temperature by ECE on calibration and compute acquisition uncertainty with that same auxiliary head and temperature. Do not transfer temperature to the reporting head. The teammate notebook already implements the auxiliary fit but still needs this scoring adjustment; its notebook is maintained by the teammate.
+Agreed calibration protocol: every reporting head trains from scratch on all queried L, identically for all four methods. Before a model-based query, split the previous L deterministically into fit/calibration using canonical IDs and the fixed calibration seed. Train an auxiliary acquisition head on fit only; choose its temperature by ECE on calibration and compute acquisition uncertainty with that same auxiliary head and temperature. Do not transfer temperature to the reporting head. The parent notebook fits the auxiliary head and uses that same head for both temperature fitting and uncertainty scoring.
 
 Do not refit the auxiliary acquisition head on calibration masks after fitting tau. Fix ECE bins, tau candidates, tie-breaks, and aggregation before benchmark. If no valid calibration pixels exist, use tau=1 and log the fallback. Never calibrate or choose the primary uncertainty method using official val.
 
@@ -232,7 +232,7 @@ Current Random runner interface (`run_script` points to `script/run_experiment.p
 %run "$run_script" --config "$config_path"
 ```
 
-The teammate acquisition methods are not connected yet.
+The parent notebook supplies its acquisition algorithms through the optional callback below. Without a callback, the entry point retains Random acquisition.
 
 Use separate branches for segmentation and acquisition. Any contract change must update its caller, documentation, and fixture together.
 
@@ -265,6 +265,18 @@ The Random runner trains on all queried L (`n_fit=budget`, `n_calibration=0`). T
 
 Defaults live only in the Pydantic classes in `alseg/config.py`. `ExperimentConfig(...)` accepts partial section values; omitted values use class defaults. Specific experiments may export a `config` instance from an ordinary `experiments/*.py` module, as in `experiments/cpu.py`.
 
-Notebooks call `.show()`, save a resolved JSON snapshot with `.save()`, then launch the training script through `%run ... --config ...`. They do not call training functions directly. CLI entry points load snapshots with `ExperimentConfig.load()`. Omitting the file means Python defaults. JSON captures a run's configuration; it does not define another set of defaults. Credentials are excluded from display and serialization and loaded at execution time.
+Notebooks call `.show()`, save a resolved JSON snapshot with `.save()`, then launch the training script through `%run ... --config ...`. CLI entry points load snapshots with `ExperimentConfig.load()`. Omitting the file means Python defaults. JSON captures a run's configuration; it does not define another set of defaults. Credentials are excluded from display and serialization and loaded at execution time.
+
+The parent acquisition notebook calls `run_experiment(config_dict, run_dir, device, tracking, acquisition=callback)` directly to keep its algorithms in the notebook and use the shared training loop. Set `acquisition.method` to the requested method. Shared defaults are `uncertainty_method='margin'`, `temperatures=(0.25, 0.5, 1, 2, 4, 8)`, and `ece_bins=5`. The auxiliary head reuses `prepare_labeled_features(config, pool, oracle, encoder, fit_ids)` and the existing `fit_head`. The optional callback has this contract:
+
+```python
+def callback(*, config, pool, oracle, encoder, round_index, budget):
+    # budget is the cumulative target; select budget - len(oracle.labeled_ids).
+    return selected_ids, metadata
+```
+
+The callback is trusted orchestration code, not a Selector. It may read already-queried masks through `oracle.get_mask` to fit an auxiliary head, but must not query the oracle or mutate its inputs. The pipeline validates count, unique integer IDs and membership in U before calling `Oracle.query`. Only the pipeline owns queries and reporting-head training. Non-Random runs require a callback and never silently substitute Random.
+
+Callback metadata is saved under `selection['acquisition']` and the round config's `acquisition_metadata`. It can include `method`, `selection_method`, `acquisition_budget`, `calibration_fit_ids`, `calibration_ids`, `tau`, `sigma`, `fallback`, and `ece_by_temperature`. Here `acquisition_budget` is the size of previously queried L used to resolve sigma/tau before the current query. For cumulative targets 21 and 42 it is 0 and 21; `n_new` separately records the new batch size. The CSV records the method, selection method, previous labeled budget, sigma/tau/fallback, and auxiliary counts as `acquisition_n_fit` and `acquisition_n_calibration`. Reporting `n_fit` remains the entire queried L and `n_calibration` remains zero. Algorithm settings and cached embeddings/distances can remain in the notebook callback's closure.
 
 Notebook dependency installation reads `pyproject.toml` with uv and targets `sys.executable`, preserving the current Kaggle kernel environment. Do not copy package/version lists into notebook cells.
